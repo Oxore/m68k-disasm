@@ -5,3 +5,4 @@
 *.S
 *.out
 cmake[-_]build*/
+compile_commands.json
