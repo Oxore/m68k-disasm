@@ -108,7 +108,7 @@ static void ParseTraceData(DisasmMap &disasm_map, const DataBuffer &trace_data)
                 // Valid value
                 disasm_map.InsertTracedNode(offset, TracedNodeType::kInstruction);
                 // TODO remove debug log
-                frintf(stderr, "[%zu] InsertTracedNode(%lu, kInstruction)\n", i, offset);
+                fprintf(stderr, "[%zu] InsertTracedNode(%lu, kInstruction)\n", i, offset);
             }
             if (startptr != endptr) {
                 i += endptr - startptr - 1;
