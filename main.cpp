@@ -56,35 +56,108 @@ enum class TracedNodeType {
     kData,
 };
 
+struct DisasmNode {
+    DisasmNode *next{}; // Next node in the inked list
+    TracedNodeType type{};
+    unsigned long offset{};
+    char *asm_string{}; // Disassembly of an instruction at the current offset
+    void Disasm(const DataBuffer &code);
+    ~DisasmNode();
+};
+
+void DisasmNode::Disasm(const DataBuffer &code)
+{
+    char *asm_str = new char [100];
+    assert(asm_str);
+    asm_string = asm_str;
+    // We assume that no MMU and ROM is always starts with 0
+    assert(offset < code.occupied_size);
+    uint16_t hi = static_cast<uint16_t>(code.buffer[offset + 0]);
+    uint16_t lo = static_cast<uint16_t>(code.buffer[offset + 1]);
+    const uint16_t instr = (hi << 8) | lo;
+    (void) instr;
+    snprintf(asm_str, 100, "  .short 0x%02x%02x | traced\n", hi, lo);
+}
+
+DisasmNode::~DisasmNode()
+{
+    if (asm_string) {
+        delete [] asm_string;
+        asm_string = nullptr;
+    }
+}
+
 class DisasmMap {
+    DisasmNode *_first{};
+    DisasmNode *_last{};
+    DisasmNode *findNodeByOffset(unsigned long offset) const;
 public:
+    const DisasmNode *FindNodeByOffset(unsigned long offset) const
+    {
+        return findNodeByOffset(offset);
+    };
     // Returns true if node inserted, false if node already exist and has not
     // been changed
     bool InsertTracedNode(unsigned long offset, TracedNodeType);
     // This function disassembles everything that has been traced
     void DisasmAll(const DataBuffer &code);
+    ~DisasmMap();
 };
+
+DisasmNode *DisasmMap::findNodeByOffset(unsigned long offset) const
+{
+    for (DisasmNode *node{_first}; node; node = node->next)
+        if (node->offset == offset)
+            return node;
+    return nullptr;
+}
 
 bool DisasmMap::InsertTracedNode(unsigned long offset, TracedNodeType type)
 {
-    (void) offset;
-    (void) type;
-    // TODO
+    if (findNodeByOffset(offset))
+        return false;
+    auto *node = new DisasmNode(DisasmNode{nullptr, type, offset});
+    assert(node);
+    if (_first) {
+        _last->next = node;
+        _last = node;
+    } else {
+        _first = node;
+        _last = node;
+    }
     return true;
 }
 
 void DisasmMap::DisasmAll(const DataBuffer &code)
 {
-    (void) code;
-    // TODO
+    for (DisasmNode *node{_first}; node; node = node->next) {
+        node->Disasm(code);
+    }
+}
+
+DisasmMap::~DisasmMap()
+{
+    DisasmNode *prev = nullptr, *node = _first;
+    while (node) {
+        prev = node;
+        node = node->next;
+        delete prev;
+    }
+    _first = nullptr;
+    _last = nullptr;
 }
 
 static void RenderDisassembly(FILE *output, const DisasmMap &disasm_map, const DataBuffer &code)
 {
-    (void) disasm_map;
-    (void) code;
-    (void) output;
-    // TODO
+    for (size_t i = 0; i < code.occupied_size; i += 2) {
+        const DisasmNode *node = disasm_map.FindNodeByOffset(i);
+        if (node) {
+            assert(node->asm_string);
+            fprintf(output, node->asm_string);
+        } else {
+            fprintf(output, "  .short 0x%02x%02x\n", code.buffer[i], code.buffer[i + 1]);
+        }
+    }
 }
 
 static void ParseTraceData(DisasmMap &disasm_map, const DataBuffer &trace_data)
@@ -99,7 +172,7 @@ static void ParseTraceData(DisasmMap &disasm_map, const DataBuffer &trace_data)
             errno = 0;
             char *startptr = reinterpret_cast<char *>(trace_data.buffer + i);
             char *endptr = startptr;
-            const long offset = strtol(startptr, &endptr, 16);
+            const long offset = strtol(startptr, &endptr, 10);
             if ((offset == LONG_MAX || offset == LONG_MIN) && errno == ERANGE) {
                 // Error, just skip
             } else if (startptr == endptr) {
@@ -107,8 +180,6 @@ static void ParseTraceData(DisasmMap &disasm_map, const DataBuffer &trace_data)
             } else {
                 // Valid value
                 disasm_map.InsertTracedNode(offset, TracedNodeType::kInstruction);
-                // TODO remove debug log
-                fprintf(stderr, "[%zu] InsertTracedNode(%lu, kInstruction)\n", i, offset);
             }
             if (startptr != endptr) {
                 i += endptr - startptr - 1;

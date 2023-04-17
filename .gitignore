@@ -4,5 +4,8 @@
 *.asm
 *.S
 *.out
+*.txt
+*.trace
+*.log
 cmake[-_]build*/
 compile_commands.json
