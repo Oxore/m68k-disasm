@@ -42,6 +42,7 @@ struct DataBuffer {
         memcpy(new_buffer, buffer, occupied_size);
         delete [] buffer;
         buffer = new_buffer;
+        buffer_size = new_size;
     }
     ~DataBuffer() {
         delete [] buffer;
@@ -57,7 +58,7 @@ enum class TracedNodeType {
 };
 
 struct DisasmNode {
-    DisasmNode *next{}; // Next node in the inked list
+    DisasmNode *next{}; // Next node in the linked list
     TracedNodeType type{};
     unsigned long offset{};
     char *asm_string{}; // Disassembly of an instruction at the current offset
