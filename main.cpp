@@ -6,6 +6,7 @@
 #include "optparse/optparse.h"
 
 #include <cassert>
+#include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -60,24 +61,117 @@ enum class TracedNodeType {
 struct DisasmNode {
     DisasmNode *next{}; // Next node in the linked list
     TracedNodeType type{};
-    unsigned long offset{};
+    uint32_t offset{};
+    size_t size{kInstructionSizeStepBytes};
     char *asm_string{}; // Disassembly of an instruction at the current offset
     void Disasm(const DataBuffer &code);
     ~DisasmNode();
 };
 
+static size_t disasm_verbatim(
+        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &)
+{
+    snprintf(out, out_sz, "  .short 0x%04x | traced @%" PRIu32 "\n", instr, offset);
+    return kInstructionSizeStepBytes;
+}
+
+static size_t disasm_mfff0_v4e70(
+        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &code)
+{
+    if (instr == 0x4e70) {
+        snprintf(out, out_sz, "  reset | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+    } else if (instr == 0x4e71) {
+        snprintf(out, out_sz, "  nop | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+    } else if (instr == 0x4e72) {
+        snprintf(out, out_sz, "  .short 0x%04x | stop (not implemented) @%" PRIu32 "\n", instr, offset);
+    } else if (instr == 0x4e73) {
+        snprintf(out, out_sz, "  rte | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+    } else if (instr == 0x4e75) {
+        snprintf(out, out_sz, "  rts | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+    } else if (instr == 0x4e76) {
+        snprintf(out, out_sz, "  trapv | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+    } else if (instr == 0x4e77) {
+        snprintf(out, out_sz, "  rtr | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+    } else {
+        return disasm_verbatim(out, out_sz, instr, offset, code);
+    }
+    return kInstructionSizeStepBytes;
+}
+
+static inline uint16_t GetU16BE(uint8_t *buffer)
+{
+    return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
+}
+
+static inline int16_t GetI16BE(uint8_t *buffer)
+{
+    return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
+}
+
+static size_t disasm_jsr(
+        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
+{
+    const int addrmode = instr & 0x3f;
+    const int m = (addrmode >> 3) & 0x7;
+    const int xn = addrmode & 0x7;
+    switch (m) {
+    case 0: // 4e80 .. 4e87
+    case 1: // 4e88 .. 4e8f
+        return disasm_verbatim(out, out_sz, instr, offset, code);
+    case 2: // 4e90 .. 4e97
+        snprintf(out, out_sz, "  jsr %%a%d@ | %" PRIx16 " @%" PRIu32 "\n", xn, instr, offset);
+        return kInstructionSizeStepBytes;
+    case 3: // 4e98 .. 4e9f
+    case 4: // 4ea0 .. 4ea7
+        return disasm_verbatim(out, out_sz, instr, offset, code);
+    case 5: // 4ea8 .. 4eaf
+        {
+            const int16_t displacement = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+            snprintf(out, out_sz, "  jsr %%a%d@(%" PRIi16 ") | %" PRIx16 " @%" PRIu32 "\n", xn, displacement, instr, offset);
+            return 4;
+        }
+        break;
+    case 6: // 4eb0 .. 4eb7, Brief Extension Word
+        // TODO
+        break;
+    case 7: // 4eb0 .. 4eb7, some are with Brief Extension Word
+        switch (xn) {
+        case 0:
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+        case 5:
+        case 6:
+            // TODO
+            break;
+        }
+        break;
+    }
+    return disasm_verbatim(out, out_sz, instr, offset, code);
+}
+
+static size_t disasm(
+        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
+{
+    if ((instr & 0xfff0) == 0x4e70) {
+        return disasm_mfff0_v4e70(out, out_sz, instr, offset, code);
+    } else if ((instr & 0xffc0) == 0x4e80) {
+        return disasm_jsr(out, out_sz, instr, offset, code);
+    }
+    return disasm_verbatim(out, out_sz, instr, offset, code);
+}
+
 void DisasmNode::Disasm(const DataBuffer &code)
 {
-    char *asm_str = new char [100];
+    constexpr size_t kBufferSize = 100;
+    char *asm_str = new char [kBufferSize]{};
     assert(asm_str);
-    asm_string = asm_str;
+    this->asm_string = asm_str;
     // We assume that no MMU and ROM is always starts with 0
-    assert(offset < code.occupied_size);
-    uint16_t hi = static_cast<uint16_t>(code.buffer[offset + 0]);
-    uint16_t lo = static_cast<uint16_t>(code.buffer[offset + 1]);
-    const uint16_t instr = (hi << 8) | lo;
-    (void) instr;
-    snprintf(asm_str, 100, "  .short 0x%02x%02x | traced\n", hi, lo);
+    assert(this->offset < code.occupied_size);
+    const uint16_t instr = GetU16BE(code.buffer + this->offset);
+    this->size = disasm(asm_str, kBufferSize, instr, this->offset, code);
 }
 
 DisasmNode::~DisasmNode()
@@ -91,21 +185,21 @@ DisasmNode::~DisasmNode()
 class DisasmMap {
     DisasmNode *_first{};
     DisasmNode *_last{};
-    DisasmNode *findNodeByOffset(unsigned long offset) const;
+    DisasmNode *findNodeByOffset(uint32_t offset) const;
 public:
-    const DisasmNode *FindNodeByOffset(unsigned long offset) const
+    const DisasmNode *FindNodeByOffset(uint32_t offset) const
     {
         return findNodeByOffset(offset);
     };
     // Returns true if node inserted, false if node already exist and has not
     // been changed
-    bool InsertTracedNode(unsigned long offset, TracedNodeType);
+    bool InsertTracedNode(uint32_t offset, TracedNodeType);
     // This function disassembles everything that has been traced
     void DisasmAll(const DataBuffer &code);
     ~DisasmMap();
 };
 
-DisasmNode *DisasmMap::findNodeByOffset(unsigned long offset) const
+DisasmNode *DisasmMap::findNodeByOffset(uint32_t offset) const
 {
     for (DisasmNode *node{_first}; node; node = node->next)
         if (node->offset == offset)
@@ -113,7 +207,7 @@ DisasmNode *DisasmMap::findNodeByOffset(unsigned long offset) const
     return nullptr;
 }
 
-bool DisasmMap::InsertTracedNode(unsigned long offset, TracedNodeType type)
+bool DisasmMap::InsertTracedNode(uint32_t offset, TracedNodeType type)
 {
     if (findNodeByOffset(offset))
         return false;
@@ -150,13 +244,15 @@ DisasmMap::~DisasmMap()
 
 static void RenderDisassembly(FILE *output, const DisasmMap &disasm_map, const DataBuffer &code)
 {
-    for (size_t i = 0; i < code.occupied_size; i += 2) {
+    for (size_t i = 0; i < code.occupied_size;) {
         const DisasmNode *node = disasm_map.FindNodeByOffset(i);
         if (node) {
             assert(node->asm_string);
-            fprintf(output, node->asm_string);
+            fputs(node->asm_string, output);
+            i += node->size;
         } else {
             fprintf(output, "  .short 0x%02x%02x\n", code.buffer[i], code.buffer[i + 1]);
+            i += kInstructionSizeStepBytes;
         }
     }
 }
@@ -238,7 +334,7 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
 
 static int M68kDisasmAll(FILE *input_stream, FILE *output_stream)
 {
-    uint8_t instruction[2]{};
+    uint8_t instruction[kInstructionSizeStepBytes]{};
     const size_t read_size = kInstructionSizeStepBytes;
     while (1) {
         const size_t fread_ret = fread(instruction, 1, read_size, input_stream);
