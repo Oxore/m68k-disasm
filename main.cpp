@@ -71,7 +71,7 @@ struct DisasmNode {
 static size_t disasm_verbatim(
         char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &)
 {
-    snprintf(out, out_sz, "  .short 0x%04x | traced @%08" PRIx32 "\n", instr, offset);
+    snprintf(out, out_sz, "  .short 0x%04x | traced @%08x\n", instr, offset);
     return kInstructionSizeStepBytes;
 }
 
@@ -79,19 +79,19 @@ static size_t disasm_mfff0_v4e70(
         char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &code)
 {
     if (instr == 0x4e70) {
-        snprintf(out, out_sz, "  reset | %04x @%04x\n", instr, offset);
+        snprintf(out, out_sz, "  reset | %04x @%08x\n", instr, offset);
     } else if (instr == 0x4e71) {
-        snprintf(out, out_sz, "  nop | %04x @%04x\n", instr, offset);
+        snprintf(out, out_sz, "  nop | %04x @%08x\n", instr, offset);
     } else if (instr == 0x4e72) {
-        snprintf(out, out_sz, "  .short 0x%04x | stop (not implemented) @%08" PRIx32 "\n", instr, offset);
+        snprintf(out, out_sz, "  .short 0x%04x | stop (not implemented) @%08x\n", instr, offset);
     } else if (instr == 0x4e73) {
-        snprintf(out, out_sz, "  rte | %04x @%04x\n", instr, offset);
+        snprintf(out, out_sz, "  rte | %04x @%08x\n", instr, offset);
     } else if (instr == 0x4e75) {
-        snprintf(out, out_sz, "  rts | %04x @%04x\n", instr, offset);
+        snprintf(out, out_sz, "  rts | %04x @%08x\n", instr, offset);
     } else if (instr == 0x4e76) {
-        snprintf(out, out_sz, "  trapv | %04x @%04x\n", instr, offset);
+        snprintf(out, out_sz, "  trapv | %04x @%08x\n", instr, offset);
     } else if (instr == 0x4e77) {
-        snprintf(out, out_sz, "  rtr | %04x @%04x\n", instr, offset);
+        snprintf(out, out_sz, "  rtr | %04x @%08x\n", instr, offset);
     } else {
         return disasm_verbatim(out, out_sz, instr, offset, code);
     }
