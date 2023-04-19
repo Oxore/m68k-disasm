@@ -79,19 +79,19 @@ static size_t disasm_mfff0_v4e70(
         char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &code)
 {
     if (instr == 0x4e70) {
-        snprintf(out, out_sz, "  reset | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+        snprintf(out, out_sz, "  reset | %04x @%04x\n", instr, offset);
     } else if (instr == 0x4e71) {
-        snprintf(out, out_sz, "  nop | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+        snprintf(out, out_sz, "  nop | %04x @%04x\n", instr, offset);
     } else if (instr == 0x4e72) {
         snprintf(out, out_sz, "  .short 0x%04x | stop (not implemented) @%" PRIu32 "\n", instr, offset);
     } else if (instr == 0x4e73) {
-        snprintf(out, out_sz, "  rte | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+        snprintf(out, out_sz, "  rte | %04x @%04x\n", instr, offset);
     } else if (instr == 0x4e75) {
-        snprintf(out, out_sz, "  rts | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+        snprintf(out, out_sz, "  rts | %04x @%04x\n", instr, offset);
     } else if (instr == 0x4e76) {
-        snprintf(out, out_sz, "  trapv | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+        snprintf(out, out_sz, "  trapv | %04x @%04x\n", instr, offset);
     } else if (instr == 0x4e77) {
-        snprintf(out, out_sz, "  rtr | %" PRIx16 " @%" PRIu32 "\n", instr, offset);
+        snprintf(out, out_sz, "  rtr | %04x @%04x\n", instr, offset);
     } else {
         return disasm_verbatim(out, out_sz, instr, offset, code);
     }
@@ -119,15 +119,19 @@ static size_t disasm_jsr(
     case 1: // 4e88 .. 4e8f
         return disasm_verbatim(out, out_sz, instr, offset, code);
     case 2: // 4e90 .. 4e97
-        snprintf(out, out_sz, "  jsr %%a%d@ | %" PRIx16 " @%" PRIu32 "\n", xn, instr, offset);
+        snprintf(out, out_sz, "  jsr %%a%d@ | %04x @%" PRIu32 "\n", xn, instr, offset);
         return kInstructionSizeStepBytes;
     case 3: // 4e98 .. 4e9f
     case 4: // 4ea0 .. 4ea7
         return disasm_verbatim(out, out_sz, instr, offset, code);
     case 5: // 4ea8 .. 4eaf
         {
-            const int16_t displacement = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
-            snprintf(out, out_sz, "  jsr %%a%d@(%" PRIi16 ") | %" PRIx16 " @%" PRIu32 "\n", xn, displacement, instr, offset);
+            const int16_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+            const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
+            snprintf(
+                    out, out_sz,
+                    "  jsr %%a%d@(%d) | %04x %04x @%" PRIu32 "\n",
+                    xn, dispmt, instr, dispmt_u, offset);
             return 4;
         }
         break;
