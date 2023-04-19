@@ -71,7 +71,7 @@ struct DisasmNode {
 static size_t disasm_verbatim(
         char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &)
 {
-    snprintf(out, out_sz, "  .short 0x%04x | traced @%" PRIu32 "\n", instr, offset);
+    snprintf(out, out_sz, "  .short 0x%04x | traced @%08" PRIx32 "\n", instr, offset);
     return kInstructionSizeStepBytes;
 }
 
@@ -83,7 +83,7 @@ static size_t disasm_mfff0_v4e70(
     } else if (instr == 0x4e71) {
         snprintf(out, out_sz, "  nop | %04x @%04x\n", instr, offset);
     } else if (instr == 0x4e72) {
-        snprintf(out, out_sz, "  .short 0x%04x | stop (not implemented) @%" PRIu32 "\n", instr, offset);
+        snprintf(out, out_sz, "  .short 0x%04x | stop (not implemented) @%08" PRIx32 "\n", instr, offset);
     } else if (instr == 0x4e73) {
         snprintf(out, out_sz, "  rte | %04x @%04x\n", instr, offset);
     } else if (instr == 0x4e75) {
@@ -119,36 +119,48 @@ static size_t disasm_jsr(
     case 1: // 4e88 .. 4e8f
         return disasm_verbatim(out, out_sz, instr, offset, code);
     case 2: // 4e90 .. 4e97
-        snprintf(out, out_sz, "  jsr %%a%d@ | %04x @%" PRIu32 "\n", xn, instr, offset);
+        snprintf(out, out_sz, "  jsr %%a%d@ | %04x @%08" PRIx32 "\n", xn, instr, offset);
         return kInstructionSizeStepBytes;
     case 3: // 4e98 .. 4e9f
     case 4: // 4ea0 .. 4ea7
         return disasm_verbatim(out, out_sz, instr, offset, code);
-    case 5: // 4ea8 .. 4eaf
+    case 5: // 4ea8 .. 4eaf, Displacement
         {
             const int16_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
             const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
             snprintf(
                     out, out_sz,
-                    "  jsr %%a%d@(%d) | %04x %04x @%" PRIu32 "\n",
+                    "  jsr %%a%d@(%d) | %04x %04x @%08" PRIx32 "\n",
                     xn, dispmt, instr, dispmt_u, offset);
             return 4;
         }
         break;
     case 6: // 4eb0 .. 4eb7, Brief Extension Word
-        // TODO
+        {
+            const uint16_t briefext = GetU16BE(code.buffer + offset + kInstructionSizeStepBytes);
+            const int m_0d_1a = (briefext >> 15) & 1;
+            const int xn2 = (briefext >> 12) & 7;
+            const int s_0w_1l = (briefext >> 11) & 1;
+            const int8_t dispmt = briefext & 0xff;
+            snprintf(
+                    out, out_sz,
+                    "  jsr %%a%d@(%d,%%%c%d:%c) | %04x %04x @%08" PRIx32 "\n",
+                    xn, dispmt, m_0d_1a ? 'a' : 'd', xn2, s_0w_1l ? 'l' : 'w', instr, briefext, offset);
+            return 4;
+        }
         break;
     case 7: // 4eb0 .. 4eb7, some are with Brief Extension Word
         switch (xn) {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
+        case 0: // 4eb0
+        case 1: // 4eb1
+        case 2: // 4eb2
+        case 3: // 4eb3
+            // TODO
+            break;
         case 4:
         case 5:
         case 6:
-            // TODO
-            break;
+            return disasm_verbatim(out, out_sz, instr, offset, code);
         }
         break;
     }
