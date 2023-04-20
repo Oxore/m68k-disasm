@@ -108,6 +108,14 @@ static inline int16_t GetI16BE(uint8_t *buffer)
     return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
 }
 
+static inline int32_t GetI32BE(uint8_t *buffer)
+{
+    return (static_cast<uint32_t>(buffer[0]) << 24) |
+        (static_cast<uint32_t>(buffer[1]) << 16) |
+        (static_cast<uint32_t>(buffer[2]) << 8) |
+        static_cast<uint32_t>(buffer[3]);
+}
+
 static size_t disasm_jsr(
         char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
 {
@@ -119,7 +127,7 @@ static size_t disasm_jsr(
     case 1: // 4e88 .. 4e8f
         return disasm_verbatim(out, out_sz, instr, offset, code);
     case 2: // 4e90 .. 4e97
-        snprintf(out, out_sz, "  jsr %%a%d@ | %04x @%08" PRIx32 "\n", xn, instr, offset);
+        snprintf(out, out_sz, "  jsr %%a%d@ | %04x @%08x\n", xn, instr, offset);
         return kInstructionSizeStepBytes;
     case 3: // 4e98 .. 4e9f
     case 4: // 4ea0 .. 4ea7
@@ -130,7 +138,7 @@ static size_t disasm_jsr(
             const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
             snprintf(
                     out, out_sz,
-                    "  jsr %%a%d@(%d) | %04x %04x @%08" PRIx32 "\n",
+                    "  jsr %%a%d@(%d:w) | %04x %04x @%08x\n",
                     xn, dispmt, instr, dispmt_u, offset);
             return 4;
         }
@@ -144,22 +152,64 @@ static size_t disasm_jsr(
             const int8_t dispmt = briefext & 0xff;
             snprintf(
                     out, out_sz,
-                    "  jsr %%a%d@(%d,%%%c%d:%c) | %04x %04x @%08" PRIx32 "\n",
+                    "  jsr %%a%d@(%d,%%%c%d:%c) | %04x %04x @%08x\n",
                     xn, dispmt, m_0d_1a ? 'a' : 'd', xn2, s_0w_1l ? 'l' : 'w', instr, briefext, offset);
             return 4;
         }
         break;
-    case 7: // 4eb0 .. 4eb7, some are with Brief Extension Word
+    case 7: // 4eb8 .. 4ebf, some are with Brief Extension Word
         switch (xn) {
-        case 0: // 4eb0
-        case 1: // 4eb1
-        case 2: // 4eb2
-        case 3: // 4eb3
-            // TODO
+        case 0: // 4eb8 (xxx).W
+            {
+                const int32_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+                const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
+                snprintf(
+                        out, out_sz,
+                        "  jsr 0x%x:w | %04x %04x @%08x\n",
+                        dispmt, instr, dispmt_u, offset);
+                return 4;
+            }
+            return disasm_verbatim(out, out_sz, instr, offset, code);
+        case 1: // 4eb9 (xxx).L
+            {
+                const int32_t dispmt = GetI32BE(code.buffer + offset + kInstructionSizeStepBytes);
+                const uint16_t dispmt_u_p1 = static_cast<uint16_t>(dispmt >> 16) & 0xffff;
+                const uint16_t dispmt_u_p2 = static_cast<uint16_t>(dispmt) & 0xffff;
+                snprintf(
+                        out, out_sz,
+                        "  jsr 0x%x:l | %04x %04x %04x @%08x\n",
+                        dispmt, instr, dispmt_u_p1, dispmt_u_p2, offset);
+                return 6;
+            }
+            return disasm_verbatim(out, out_sz, instr, offset, code);
+        case 2: // 4eba, Displacement
+            {
+                const int16_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+                const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
+                snprintf(
+                        out, out_sz,
+                        "  jsr %%pc@(%d:w) | %04x %04x @%08x\n",
+                        dispmt, instr, dispmt_u, offset);
+                return 4;
+            }
             break;
-        case 4:
-        case 5:
-        case 6:
+        case 3: // 4ebb
+            {
+                const uint16_t briefext = GetU16BE(code.buffer + offset + kInstructionSizeStepBytes);
+                const int m_0d_1a = (briefext >> 15) & 1;
+                const int xn2 = (briefext >> 12) & 7;
+                const int s_0w_1l = (briefext >> 11) & 1;
+                const int8_t dispmt = briefext & 0xff;
+                snprintf(
+                        out, out_sz,
+                        "  jsr %%pc@(%d,%%%c%d:%c) | %04x %04x @%08x\n",
+                        dispmt, m_0d_1a ? 'a' : 'd', xn2, s_0w_1l ? 'l' : 'w', instr, briefext, offset);
+                return 4;
+            }
+            break;
+        case 4: // 4ebc
+        case 5: // 4ebd
+        case 6: // 4ebe
             return disasm_verbatim(out, out_sz, instr, offset, code);
         }
         break;
