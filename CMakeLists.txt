@@ -17,6 +17,8 @@ set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fsanitize=address -fn
 
 set(m68kdisasm_sources
     main.cpp
+    data_buffer.cpp
+    disasm.cpp
     )
 
 add_executable(m68k-disasm ${m68kdisasm_sources})

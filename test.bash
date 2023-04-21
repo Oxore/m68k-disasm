@@ -34,10 +34,9 @@ run_test_simple() {
     hexdump -Cv ${file_orig_bin} | head -n1
     echo ${file_as_bin}
     hexdump -Cv ${file_as_bin} | head -n1
-    break;
   else
     echo "OK"
-    cat ${file_asm}
+    #cat ${file_asm}
   fi
 }
 

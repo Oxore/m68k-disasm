@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: Unlicense
  */
 
+#include "disasm.h"
+#include "data_buffer.h"
+#include "common.h"
+
 #define OPTPARSE_IMPLEMENTATION
 #define OPTPARSE_API static
 #include "optparse/optparse.h"
@@ -8,9 +12,9 @@
 #include <cassert>
 #include <cinttypes>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <cstdint>
 #include <cerrno>
 #include <climits>
 
@@ -27,32 +31,6 @@
  * Trace data parser is needed. Maybe just using atol(3) will be ok.
  */
 
-constexpr size_t kInstructionSizeStepBytes = 2;
-
-struct DataBuffer {
-    static constexpr size_t kInitialSize = 4 * 1024;
-    uint8_t *buffer{new uint8_t[kInitialSize]};
-    size_t buffer_size{kInitialSize};
-    size_t occupied_size{};
-    void Expand(size_t new_size) {
-        if (new_size <= buffer_size) {
-            return;
-        }
-        uint8_t *new_buffer{new uint8_t[new_size]};
-        assert(new_buffer);
-        memcpy(new_buffer, buffer, occupied_size);
-        delete [] buffer;
-        buffer = new_buffer;
-        buffer_size = new_size;
-    }
-    ~DataBuffer() {
-        delete [] buffer;
-        buffer = nullptr;
-        buffer_size = 0;
-        occupied_size = 0;
-    }
-};
-
 enum class TracedNodeType {
     kInstruction,
     kData,
@@ -68,166 +46,6 @@ struct DisasmNode {
     ~DisasmNode();
 };
 
-static size_t disasm_verbatim(
-        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &)
-{
-    snprintf(out, out_sz, "  .short 0x%04x | traced @%08x\n", instr, offset);
-    return kInstructionSizeStepBytes;
-}
-
-static size_t disasm_mfff0_v4e70(
-        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer &code)
-{
-    if (instr == 0x4e70) {
-        snprintf(out, out_sz, "  reset | %04x @%08x\n", instr, offset);
-    } else if (instr == 0x4e71) {
-        snprintf(out, out_sz, "  nop | %04x @%08x\n", instr, offset);
-    } else if (instr == 0x4e72) {
-        snprintf(out, out_sz, "  .short 0x%04x | stop (not implemented) @%08x\n", instr, offset);
-    } else if (instr == 0x4e73) {
-        snprintf(out, out_sz, "  rte | %04x @%08x\n", instr, offset);
-    } else if (instr == 0x4e75) {
-        snprintf(out, out_sz, "  rts | %04x @%08x\n", instr, offset);
-    } else if (instr == 0x4e76) {
-        snprintf(out, out_sz, "  trapv | %04x @%08x\n", instr, offset);
-    } else if (instr == 0x4e77) {
-        snprintf(out, out_sz, "  rtr | %04x @%08x\n", instr, offset);
-    } else {
-        return disasm_verbatim(out, out_sz, instr, offset, code);
-    }
-    return kInstructionSizeStepBytes;
-}
-
-static inline uint16_t GetU16BE(uint8_t *buffer)
-{
-    return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
-}
-
-static inline int16_t GetI16BE(uint8_t *buffer)
-{
-    return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
-}
-
-static inline int32_t GetI32BE(uint8_t *buffer)
-{
-    return (static_cast<uint32_t>(buffer[0]) << 24) |
-        (static_cast<uint32_t>(buffer[1]) << 16) |
-        (static_cast<uint32_t>(buffer[2]) << 8) |
-        static_cast<uint32_t>(buffer[3]);
-}
-
-static size_t disasm_jsr(
-        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
-{
-    const int addrmode = instr & 0x3f;
-    const int m = (addrmode >> 3) & 0x7;
-    const int xn = addrmode & 0x7;
-    switch (m) {
-    case 0: // 4e80 .. 4e87
-    case 1: // 4e88 .. 4e8f
-        return disasm_verbatim(out, out_sz, instr, offset, code);
-    case 2: // 4e90 .. 4e97
-        snprintf(out, out_sz, "  jsr %%a%d@ | %04x @%08x\n", xn, instr, offset);
-        return kInstructionSizeStepBytes;
-    case 3: // 4e98 .. 4e9f
-    case 4: // 4ea0 .. 4ea7
-        return disasm_verbatim(out, out_sz, instr, offset, code);
-    case 5: // 4ea8 .. 4eaf, Displacement
-        {
-            const int16_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
-            const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
-            snprintf(
-                    out, out_sz,
-                    "  jsr %%a%d@(%d:w) | %04x %04x @%08x\n",
-                    xn, dispmt, instr, dispmt_u, offset);
-            return 4;
-        }
-        break;
-    case 6: // 4eb0 .. 4eb7, Brief Extension Word
-        {
-            const uint16_t briefext = GetU16BE(code.buffer + offset + kInstructionSizeStepBytes);
-            const int m_0d_1a = (briefext >> 15) & 1;
-            const int xn2 = (briefext >> 12) & 7;
-            const int s_0w_1l = (briefext >> 11) & 1;
-            const int8_t dispmt = briefext & 0xff;
-            snprintf(
-                    out, out_sz,
-                    "  jsr %%a%d@(%d,%%%c%d:%c) | %04x %04x @%08x\n",
-                    xn, dispmt, m_0d_1a ? 'a' : 'd', xn2, s_0w_1l ? 'l' : 'w', instr, briefext, offset);
-            return 4;
-        }
-        break;
-    case 7: // 4eb8 .. 4ebf, some are with Brief Extension Word
-        switch (xn) {
-        case 0: // 4eb8 (xxx).W
-            {
-                const int32_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
-                const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
-                snprintf(
-                        out, out_sz,
-                        "  jsr 0x%x:w | %04x %04x @%08x\n",
-                        dispmt, instr, dispmt_u, offset);
-                return 4;
-            }
-            return disasm_verbatim(out, out_sz, instr, offset, code);
-        case 1: // 4eb9 (xxx).L
-            {
-                const int32_t dispmt = GetI32BE(code.buffer + offset + kInstructionSizeStepBytes);
-                const uint16_t dispmt_u_p1 = static_cast<uint16_t>(dispmt >> 16) & 0xffff;
-                const uint16_t dispmt_u_p2 = static_cast<uint16_t>(dispmt) & 0xffff;
-                snprintf(
-                        out, out_sz,
-                        "  jsr 0x%x:l | %04x %04x %04x @%08x\n",
-                        dispmt, instr, dispmt_u_p1, dispmt_u_p2, offset);
-                return 6;
-            }
-            return disasm_verbatim(out, out_sz, instr, offset, code);
-        case 2: // 4eba, Displacement
-            {
-                const int16_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
-                const uint16_t dispmt_u = static_cast<uint16_t>(dispmt);
-                snprintf(
-                        out, out_sz,
-                        "  jsr %%pc@(%d:w) | %04x %04x @%08x\n",
-                        dispmt, instr, dispmt_u, offset);
-                return 4;
-            }
-            break;
-        case 3: // 4ebb
-            {
-                const uint16_t briefext = GetU16BE(code.buffer + offset + kInstructionSizeStepBytes);
-                const int m_0d_1a = (briefext >> 15) & 1;
-                const int xn2 = (briefext >> 12) & 7;
-                const int s_0w_1l = (briefext >> 11) & 1;
-                const int8_t dispmt = briefext & 0xff;
-                snprintf(
-                        out, out_sz,
-                        "  jsr %%pc@(%d,%%%c%d:%c) | %04x %04x @%08x\n",
-                        dispmt, m_0d_1a ? 'a' : 'd', xn2, s_0w_1l ? 'l' : 'w', instr, briefext, offset);
-                return 4;
-            }
-            break;
-        case 4: // 4ebc
-        case 5: // 4ebd
-        case 6: // 4ebe
-            return disasm_verbatim(out, out_sz, instr, offset, code);
-        }
-        break;
-    }
-    return disasm_verbatim(out, out_sz, instr, offset, code);
-}
-
-static size_t disasm(
-        char *out, size_t out_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
-{
-    if ((instr & 0xfff0) == 0x4e70) {
-        return disasm_mfff0_v4e70(out, out_sz, instr, offset, code);
-    } else if ((instr & 0xffc0) == 0x4e80) {
-        return disasm_jsr(out, out_sz, instr, offset, code);
-    }
-    return disasm_verbatim(out, out_sz, instr, offset, code);
-}
-
 void DisasmNode::Disasm(const DataBuffer &code)
 {
     constexpr size_t kBufferSize = 100;
@@ -237,7 +55,11 @@ void DisasmNode::Disasm(const DataBuffer &code)
     // We assume that no MMU and ROM is always starts with 0
     assert(this->offset < code.occupied_size);
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
-    this->size = disasm(asm_str, kBufferSize, instr, this->offset, code);
+    const size_t rendered_sz = m68k_disasm(
+            asm_str, kBufferSize, &this->size, instr, this->offset, code);
+    const size_t comment_rendered_sz = m68k_render_raw_data_comment(
+            asm_str + rendered_sz, kBufferSize - rendered_sz, this->offset, this->size, code);
+    (void) comment_rendered_sz;
 }
 
 DisasmNode::~DisasmNode()
@@ -315,6 +137,7 @@ static void RenderDisassembly(FILE *output, const DisasmMap &disasm_map, const D
         if (node) {
             assert(node->asm_string);
             fputs(node->asm_string, output);
+            fputc('\n', output);
             i += node->size;
         } else {
             fprintf(output, "  .short 0x%02x%02x\n", code.buffer[i], code.buffer[i + 1]);
