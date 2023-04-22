@@ -31,44 +31,6 @@
  * Trace data parser is needed. Maybe just using atol(3) will be ok.
  */
 
-enum class TracedNodeType {
-    kInstruction,
-    kData,
-};
-
-struct DisasmNode {
-    TracedNodeType type{};
-    uint32_t offset{};
-    size_t size{kInstructionSizeStepBytes};
-    char *asm_string{}; // Disassembly of an instruction at the current offset
-    void Disasm(const DataBuffer &code);
-    ~DisasmNode();
-};
-
-void DisasmNode::Disasm(const DataBuffer &code)
-{
-    constexpr size_t kBufferSize = 100;
-    char *asm_str = new char [kBufferSize]{};
-    assert(asm_str);
-    this->asm_string = asm_str;
-    // We assume that no MMU and ROM is always starts with 0
-    assert(this->offset < code.occupied_size);
-    const uint16_t instr = GetU16BE(code.buffer + this->offset);
-    const size_t rendered_sz = m68k_disasm(
-            asm_str, kBufferSize, &this->size, instr, this->offset, code);
-    const size_t comment_rendered_sz = m68k_render_raw_data_comment(
-            asm_str + rendered_sz, kBufferSize - rendered_sz, this->offset, this->size, code);
-    (void) comment_rendered_sz;
-}
-
-DisasmNode::~DisasmNode()
-{
-    if (asm_string) {
-        delete [] asm_string;
-        asm_string = nullptr;
-    }
-}
-
 class DisasmMap {
     DisasmNode *_map[kDisasmMapSizeElements]{};
     DisasmNode *findNodeByOffset(uint32_t offset) const;
@@ -120,14 +82,34 @@ DisasmMap::~DisasmMap()
     }
 }
 
+static size_t RenderRawDataComment(
+        char *out, size_t out_sz, uint32_t offset, size_t instr_sz, const DataBuffer &code)
+{
+    size_t overall_sz = Min(out_sz, snprintf(out, out_sz, " |"));
+    for (size_t i = 0; i < instr_sz; i += kInstructionSizeStepBytes)
+    {
+        overall_sz += Min(
+                out_sz - overall_sz,
+                snprintf(
+                    out + overall_sz,
+                    out_sz - overall_sz,
+                    " %04x",
+                    GetU16BE(code.buffer + offset + i)));
+    }
+    overall_sz += Min(
+            out_sz - overall_sz,
+            snprintf(out + overall_sz, out_sz - overall_sz, " @%08x", offset));
+    return overall_sz;
+}
+
 static void RenderDisassembly(FILE *output, const DisasmMap &disasm_map, const DataBuffer &code)
 {
     for (size_t i = 0; i < code.occupied_size;) {
         const DisasmNode *node = disasm_map.FindNodeByOffset(i);
         if (node) {
-            assert(node->asm_string);
-            fputs(node->asm_string, output);
-            fputc('\n', output);
+            char comment[100]{};
+            RenderRawDataComment(comment, sizeof(comment) - 1, node->offset, node->size, code);
+            fprintf(output, "  %s %s%s\n", node->mnemonic, node->arguments, comment);
             i += node->size;
         } else {
             fprintf(output, "  .short 0x%02x%02x\n", code.buffer[i], code.buffer[i + 1]);
@@ -201,6 +183,12 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
     if (input_size == 0) {
         fprintf(stderr, "ReadFromStream(code, input_stream): Error: No data has been read\n");
         return EXIT_FAILURE;
+    }
+    // Expand a little just in case there is truncated instruction in the end of
+    // the buffer so it will not fall out of buffer trying to fetch arguments
+    // from additional extension words.
+    if (code.occupied_size + 100 > code.buffer_size) {
+        code.Expand(code.occupied_size + 100);
     }
     // Read trace file into buffer
     DataBuffer trace_data{};

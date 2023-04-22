@@ -1,21 +1,26 @@
 #pragma once
 
 #include "data_buffer.h"
+#include "common.h"
 
 #include <cstddef>
 #include <cstdint>
 
-size_t m68k_disasm(
-        char *out,
-        size_t out_sz,
-        size_t *instr_sz,
-        uint16_t instr,
-        uint32_t offset,
-        const DataBuffer &code);
+enum class TracedNodeType {
+    kInstruction,
+    kData,
+};
 
-size_t m68k_render_raw_data_comment(
-        char *out,
-        size_t out_sz,
-        uint32_t offset,
-        size_t instr_sz,
-        const DataBuffer &code);
+constexpr size_t kMnemonicBufferSize{10};
+constexpr size_t kArgsBufferSize{50};
+
+struct DisasmNode {
+    TracedNodeType type{};
+    uint32_t offset{};
+    size_t size{kInstructionSizeStepBytes}; // Instruction size in bytes
+    bool has_branch_addr{};
+    uint32_t branch_addr{}; // Absolute address of where to branch to
+    char mnemonic[kMnemonicBufferSize]{}; // Mnemonic of the instruction at the current offset
+    char arguments[kArgsBufferSize]{}; // Formatted arguments of the instruction
+    void Disasm(const DataBuffer &code);
+};
