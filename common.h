@@ -1,5 +1,8 @@
 #pragma once
 
+struct Settings {
+};
+
 constexpr size_t kInstructionSizeStepBytes = 2;
 constexpr size_t kRomSizeBytes = 4 * 1024 * 1024;
 constexpr size_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStepBytes;
@@ -23,4 +26,3 @@ static inline int32_t GetI32BE(uint8_t *buffer)
         (static_cast<uint32_t>(buffer[2]) << 8) |
         static_cast<uint32_t>(buffer[3]);
 }
-

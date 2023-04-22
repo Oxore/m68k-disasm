@@ -34,6 +34,7 @@
 class DisasmMap {
     DisasmNode *_map[kDisasmMapSizeElements]{};
     DisasmNode *findNodeByOffset(uint32_t offset) const;
+    DisasmNode *insertTracedNode(uint32_t offset, TracedNodeType);
 public:
     const DisasmNode *FindNodeByOffset(uint32_t offset) const
     {
@@ -41,9 +42,12 @@ public:
     };
     // Returns true if node inserted, false if node already exist and has not
     // been changed
-    bool InsertTracedNode(uint32_t offset, TracedNodeType);
+    bool InsertTracedNode(uint32_t offset, TracedNodeType type)
+    {
+        return nullptr != insertTracedNode(offset, type);
+    }
     // This function disassembles everything that has been traced
-    void DisasmAll(const DataBuffer &code);
+    void DisasmAll(const DataBuffer &code, const Settings &);
     ~DisasmMap();
 };
 
@@ -54,22 +58,31 @@ DisasmNode *DisasmMap::findNodeByOffset(uint32_t offset) const
     return nullptr;
 }
 
-bool DisasmMap::InsertTracedNode(uint32_t offset, TracedNodeType type)
+DisasmNode *DisasmMap::insertTracedNode(uint32_t offset, TracedNodeType type)
 {
-    if (findNodeByOffset(offset))
-        return false;
-    auto *node = new DisasmNode(DisasmNode{type, offset});
+    auto *node = findNodeByOffset(offset);
+    if (node) {
+        return node;
+    }
+    node = new DisasmNode(DisasmNode{type, offset});
     assert(node);
     _map[offset / kInstructionSizeStepBytes] = node;
-    return true;
+    return node;
 }
 
-void DisasmMap::DisasmAll(const DataBuffer &code)
+void DisasmMap::DisasmAll(const DataBuffer &code, const Settings & s)
 {
     for (size_t i = 0; i < kDisasmMapSizeElements; i++) {
         auto *node = _map[i];
-        if (node) {
-            _map[i]->Disasm(code);
+        if (!node) {
+            continue;
+        }
+        node->Disasm(code, s);
+        if (node->has_branch_addr && node->branch_addr < code.occupied_size) {
+            auto *ref_node = insertTracedNode(
+                    node->branch_addr, TracedNodeType::kInstruction);
+            ref_node->Disasm(code, s);
+            ref_node->AddReferencedBy(node->offset);
         }
     }
 }
@@ -85,7 +98,7 @@ DisasmMap::~DisasmMap()
 static size_t RenderRawDataComment(
         char *out, size_t out_sz, uint32_t offset, size_t instr_sz, const DataBuffer &code)
 {
-    size_t overall_sz = Min(out_sz, snprintf(out, out_sz, " |"));
+    size_t overall_sz{};
     for (size_t i = 0; i < instr_sz; i += kInstructionSizeStepBytes)
     {
         overall_sz += Min(
@@ -102,14 +115,31 @@ static size_t RenderRawDataComment(
     return overall_sz;
 }
 
-static void RenderDisassembly(FILE *output, const DisasmMap &disasm_map, const DataBuffer &code)
+static void RenderDisassembly(
+        FILE *output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &)
 {
     for (size_t i = 0; i < code.occupied_size;) {
         const DisasmNode *node = disasm_map.FindNodeByOffset(i);
         if (node) {
             char comment[100]{};
             RenderRawDataComment(comment, sizeof(comment) - 1, node->offset, node->size, code);
-            fprintf(output, "  %s %s%s\n", node->mnemonic, node->arguments, comment);
+            if (node->ref_by) {
+                fprintf(output, "| Referenced by:\n");
+                for (ReferenceNode *ref{node->ref_by}; ref; ref = ref->next) {
+                    fprintf(output, "|");
+                    for (size_t i = 0; i < ref->refs_count; i++) {
+                        fprintf(output, " @%08x", ref->refs[i]);
+                    }
+                    fprintf(output, "\n");
+                }
+                fprintf(output, ".L%08x:\n", node->offset);
+            }
+            char branch_addr[12]{};
+            if (node->has_branch_addr) {
+                snprintf(branch_addr, sizeof(branch_addr), " .L%08x", node->branch_addr);
+            }
+            const char *const delimiter = node->arguments[0] != '\0' ? " " : "";
+            fprintf(output, "  %s%s%s |%s%s\n", node->mnemonic, delimiter, node->arguments, branch_addr, comment);
             i += node->size;
         } else {
             fprintf(output, "  .short 0x%02x%02x\n", code.buffer[i], code.buffer[i + 1]);
@@ -175,7 +205,7 @@ static size_t ReadFromStream(DataBuffer &db, FILE *stream)
     return db.occupied_size;
 }
 
-static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trace_stream)
+static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trace_stream, const Settings &s)
 {
     // Read machine code into buffer
     DataBuffer code{};
@@ -202,14 +232,14 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
     assert(disasm_map);
     ParseTraceData(*disasm_map, trace_data);
     // Disasm into output map
-    disasm_map->DisasmAll(code);
+    disasm_map->DisasmAll(code, s);
     // Print output into output_stream
-    RenderDisassembly(output_stream, *disasm_map, code);
+    RenderDisassembly(output_stream, *disasm_map, code, s);
     delete disasm_map;
     return 0;
 }
 
-static int M68kDisasmAll(FILE *input_stream, FILE *output_stream)
+static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings &)
 {
     uint8_t instruction[kInstructionSizeStepBytes]{};
     const size_t read_size = kInstructionSizeStepBytes;
@@ -308,10 +338,11 @@ int main(int, char* argv[])
             return EXIT_FAILURE;
         }
     }
+    Settings s{};
     // Run the program
     const int ret = trace_stream
-        ? M68kDisasmByTrace(input_stream, output_stream, trace_stream)
-        : M68kDisasmAll(input_stream, output_stream);
+        ? M68kDisasmByTrace(input_stream, output_stream, trace_stream, s)
+        : M68kDisasmAll(input_stream, output_stream, s);
     if (trace_stream != nullptr) {
         fclose(trace_stream);
     }

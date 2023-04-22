@@ -7,7 +7,7 @@
 #include <cstdlib>
 
 static void disasm_verbatim(
-        DisasmNode& node, uint16_t instr, uint32_t, const DataBuffer &)
+        DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
 {
     node.size = kInstructionSizeStepBytes;
     snprintf(node.mnemonic, kMnemonicBufferSize, ".short");
@@ -15,7 +15,7 @@ static void disasm_verbatim(
 }
 
 static void disasm_mfff0_v4e70(
-        DisasmNode& node, uint16_t instr, uint32_t offset, const DataBuffer &code)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     node.size = kInstructionSizeStepBytes;
     if (instr == 0x4e70) {
@@ -31,7 +31,7 @@ static void disasm_mfff0_v4e70(
     } else if (instr == 0x4e77) {
         snprintf(node.mnemonic, kMnemonicBufferSize, "rtr");
     } else {
-        disasm_verbatim(node, instr, offset, code);
+        disasm_verbatim(node, instr, code, s);
     }
 }
 
@@ -41,7 +41,7 @@ enum class JsrJmp {
 };
 
 static void disasm_jsr_jmp(
-        DisasmNode& node, uint16_t instr, uint32_t offset, const DataBuffer & code, JsrJmp jsrjmp)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, JsrJmp jsrjmp)
 {
     const char *mnemonic = (jsrjmp == JsrJmp::kJsr) ? "jsr" : "jmp";
     const int addrmode = instr & 0x3f;
@@ -62,7 +62,7 @@ static void disasm_jsr_jmp(
     case 5: // 4ea8 .. 4eaf, Displacement
         {
             node.size = kInstructionSizeStepBytes * 2;
-            const int16_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+            const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
             snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
             snprintf(node.arguments, kArgsBufferSize, "%%a%d@(%d:w)", xn, dispmt);
             return;
@@ -70,7 +70,7 @@ static void disasm_jsr_jmp(
     case 6: // 4eb0 .. 4eb7, Brief Extension Word
         {
             node.size = kInstructionSizeStepBytes * 2;
-            const uint16_t briefext = GetU16BE(code.buffer + offset + kInstructionSizeStepBytes);
+            const uint16_t briefext = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
             const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
             const int xn2 = (briefext >> 12) & 7;
             const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
@@ -84,8 +84,9 @@ static void disasm_jsr_jmp(
         switch (xn) {
         case 0: // 4eb8 (xxx).W
             {
+                // TODO set has_branch_addr and branch_addr
                 node.size = kInstructionSizeStepBytes * 2;
-                const int32_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+                const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
                 return;
@@ -93,7 +94,7 @@ static void disasm_jsr_jmp(
         case 1: // 4eb9 (xxx).L
             {
                 node.size = kInstructionSizeStepBytes * 3;
-                const int32_t dispmt = GetI32BE(code.buffer + offset + kInstructionSizeStepBytes);
+                const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
                 return;
@@ -101,7 +102,7 @@ static void disasm_jsr_jmp(
         case 2: // 4eba, Displacement
             {
                 node.size = kInstructionSizeStepBytes * 2;
-                const int16_t dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+                const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
                 snprintf(node.arguments, kArgsBufferSize, "%%pc@(%d:w)", dispmt);
                 return;
@@ -110,7 +111,7 @@ static void disasm_jsr_jmp(
             {
                 node.size = kInstructionSizeStepBytes * 2;
                 const uint16_t briefext = GetU16BE(
-                        code.buffer + offset + kInstructionSizeStepBytes);
+                        code.buffer + node.offset + kInstructionSizeStepBytes);
                 const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
                 const int xn2 = (briefext >> 12) & 7;
                 const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
@@ -127,19 +128,19 @@ static void disasm_jsr_jmp(
         }
         break;
     }
-    return disasm_verbatim(node, instr, offset, code);
+    return disasm_verbatim(node, instr, code, s);
 }
 
 static void disasm_jsr(
-        DisasmNode& node, uint16_t instr, uint32_t offset, const DataBuffer & code)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    return disasm_jsr_jmp(node, instr, offset, code, JsrJmp::kJsr);
+    return disasm_jsr_jmp(node, instr, code, s, JsrJmp::kJsr);
 }
 
 static void disasm_jmp(
-        DisasmNode& node, uint16_t instr, uint32_t offset, const DataBuffer & code)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    return disasm_jsr_jmp(node, instr, offset, code, JsrJmp::kJmp);
+    return disasm_jsr_jmp(node, instr, code, s, JsrJmp::kJmp);
 }
 
 enum class Condition {
@@ -185,19 +186,21 @@ static inline const char *branch_instr_name_by_cond(Condition condition)
 }
 
 static void disasm_bra_bsr_bcc(
-        DisasmNode& node, uint16_t instr, uint32_t offset, const DataBuffer & code)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &)
 {
     const char *mnemonic = branch_instr_name_by_cond(static_cast<Condition>((instr >> 8) & 0xf));
     int dispmt = static_cast<int8_t>(instr & 0xff);
     const char *size_spec = "s";
     if (dispmt == 0) {
-        dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+        dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
         node.size = kInstructionSizeStepBytes * 2;
         size_spec = "w";
     } else {
         node.size = kInstructionSizeStepBytes;
     }
     dispmt += kInstructionSizeStepBytes;
+    node.branch_addr = node.offset + dispmt;
+    node.has_branch_addr = true;
     const char * const sign = dispmt >= 0 ? "+" : "";
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s", mnemonic, size_spec);
     snprintf(node.arguments, kArgsBufferSize, ".%s%d", sign, dispmt);
@@ -205,24 +208,60 @@ static void disasm_bra_bsr_bcc(
 }
 
 static void m68k_disasm(
-        DisasmNode& node, uint16_t instr, uint32_t offset, const DataBuffer &code)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if ((instr & 0xfff0) == 0x4e70) {
-        return disasm_mfff0_v4e70(node, instr, offset, code);
+        return disasm_mfff0_v4e70(node, instr, code, s);
     } else if ((instr & 0xffc0) == 0x4e80) {
-        return disasm_jsr(node, instr, offset, code);
+        return disasm_jsr(node, instr, code, s);
     } else if ((instr & 0xffc0) == 0x4ec0) {
-        return disasm_jmp(node, instr, offset, code);
+        return disasm_jmp(node, instr, code, s);
     } else if ((instr & 0xf000) == 0x6000) {
-        return disasm_bra_bsr_bcc(node, instr, offset, code);
+        return disasm_bra_bsr_bcc(node, instr, code, s);
     }
-    return disasm_verbatim(node, instr, offset, code);
+    return disasm_verbatim(node, instr, code, s);
 }
 
-void DisasmNode::Disasm(const DataBuffer &code)
+void DisasmNode::Disasm(const DataBuffer &code, const Settings &s)
 {
     // We assume that no MMU and ROM is always starts with 0
     assert(this->offset < code.occupied_size);
+    // It is possible to have multiple DisasmNode::Disasm() calls, and there is
+    // no point to disassemble it again if it already has mnemonic determined
+    if (this->mnemonic[0] != '\0') {
+        return;
+    }
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
-    m68k_disasm(*this, instr, this->offset, code);
+    m68k_disasm(*this, instr, code, s);
+}
+
+
+void DisasmNode::AddReferencedBy(uint32_t offset)
+{
+    ReferenceNode *node{};
+    if (this->last_ref_by) {
+        node = this->last_ref_by;
+    } else {
+        node = new ReferenceNode{};
+        assert(node);
+        this->ref_by = this->last_ref_by = node;
+    }
+    node->refs[node->refs_count] = offset;
+    node->refs_count++;
+    if (node->refs_count >= kRefsCountPerBuffer) {
+        ReferenceNode *new_node = new ReferenceNode{};
+        assert(new_node);
+        node->next = new_node;
+        this->last_ref_by = new_node;
+    }
+}
+
+DisasmNode::~DisasmNode()
+{
+    ReferenceNode *ref{this->ref_by};
+    while (ref) {
+        ReferenceNode *prev = ref;
+        ref = ref->next;
+        delete prev;
+    }
 }
