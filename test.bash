@@ -146,6 +146,23 @@ jsr_m7_xn3() {
   run_test_iterative ${FUNCNAME} "\x4e\xbb" 0x00 8 0x10 "\x0f"
 }
 
+reset_nop_rte_rts_trapv_rtr() {
+  # 4e7x
+  #
+  # reset / 4e70
+  run_test_simple ${FUNCNAME} "\x4e\x70"
+  # nop / 4e71
+  run_test_simple ${FUNCNAME} "\x4e\x71"
+  # rte / 4e73
+  run_test_simple ${FUNCNAME} "\x4e\x73"
+  # rts / 4e75
+  run_test_simple ${FUNCNAME} "\x4e\x75"
+  # trapv / 4e76
+  run_test_simple ${FUNCNAME} "\x4e\x76"
+  # rtr / 4e77
+  run_test_simple ${FUNCNAME} "\x4e\x77"
+}
+
 jsr_m2
 jsr_m5
 jsr_m6
@@ -153,3 +170,4 @@ jsr_m7_xn0
 jsr_m7_xn1
 jsr_m7_xn2
 jsr_m7_xn3
+reset_nop_rte_rts_trapv_rtr
