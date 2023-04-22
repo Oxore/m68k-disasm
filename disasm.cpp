@@ -3,6 +3,7 @@
 #include "common.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 static size_t disasm_verbatim(
         char *out, size_t out_sz, size_t *instr_sz, uint16_t instr, uint32_t, const DataBuffer &)
@@ -131,15 +132,93 @@ static size_t disasm_jsr_jmp(
     return disasm_verbatim(out, out_sz, instr_sz, instr, offset, code);
 }
 
+static size_t disasm_jsr(
+        char *out, size_t out_sz, size_t *instr_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
+{
+    return disasm_jsr_jmp(out, out_sz, instr_sz, instr, offset, code, JsrJmp::kJsr);
+}
+
+static size_t disasm_jmp(
+        char *out, size_t out_sz, size_t *instr_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
+{
+    return disasm_jsr_jmp(out, out_sz, instr_sz, instr, offset, code, JsrJmp::kJmp);
+}
+
+enum class Condition {
+    kT = 0,
+    kF = 1,
+    kHI = 2,
+    kLS = 3,
+    kCC = 4,
+    kCS = 5,
+    kNE = 6,
+    kEQ = 7,
+    kVC = 8,
+    kVS = 9,
+    kPL = 10,
+    kMI = 11,
+    kGE = 12,
+    kLT = 13,
+    kGT = 14,
+    kLE = 15,
+};
+
+static inline const char *branch_instr_name_by_cond(Condition condition)
+{
+    switch (condition) {
+    case Condition::kT:  return "bra"; // 60xx
+    case Condition::kF:  return "bsr"; // 61xx
+    case Condition::kHI: return "bhi"; // 62xx
+    case Condition::kLS: return "bls"; // 63xx
+    case Condition::kCC: return "bcc"; // 64xx
+    case Condition::kCS: return "bcs"; // 65xx
+    case Condition::kNE: return "bne"; // 66xx
+    case Condition::kEQ: return "beq"; // 67xx
+    case Condition::kVC: return "bvc"; // 68xx
+    case Condition::kVS: return "bvs"; // 69xx
+    case Condition::kPL: return "bpl"; // 6axx
+    case Condition::kMI: return "bmi"; // 6bxx
+    case Condition::kGE: return "bge"; // 6cxx
+    case Condition::kLT: return "blt"; // 6dxx
+    case Condition::kGT: return "bgt"; // 6exx
+    case Condition::kLE: return "ble"; // 6fxx
+    }
+    return "?";
+}
+
+static size_t disasm_bra_bsr_bcc(
+        char *out, size_t out_sz, size_t *instr_sz, uint16_t instr, uint32_t offset, const DataBuffer & code)
+{
+    const char *mnemonic = branch_instr_name_by_cond(static_cast<Condition>((instr >> 8) & 0xf));
+    int dispmt = static_cast<int8_t>(instr & 0xff);
+    const char *size_spec = "s";
+    if (dispmt == 0) {
+        dispmt = GetI16BE(code.buffer + offset + kInstructionSizeStepBytes);
+        if (instr_sz) {
+            *instr_sz = kInstructionSizeStepBytes * 2;
+        }
+        size_spec = "w";
+    } else {
+        if (instr_sz) {
+            *instr_sz = kInstructionSizeStepBytes;
+        }
+    }
+    dispmt += kInstructionSizeStepBytes;
+    const char * const sign = dispmt >= 0 ? "+" : "";
+    return Min(out_sz, snprintf(out, out_sz, "  %s%s .%s%d", mnemonic, size_spec, sign, dispmt));
+}
+
 size_t m68k_disasm(
         char *out, size_t out_sz, size_t *instr_sz, uint16_t instr, uint32_t offset, const DataBuffer &code)
 {
     if ((instr & 0xfff0) == 0x4e70) {
         return disasm_mfff0_v4e70(out, out_sz, instr_sz, instr, offset, code);
     } else if ((instr & 0xffc0) == 0x4e80) {
-        return disasm_jsr_jmp(out, out_sz, instr_sz, instr, offset, code, JsrJmp::kJsr);
+        return disasm_jsr(out, out_sz, instr_sz, instr, offset, code);
     } else if ((instr & 0xffc0) == 0x4ec0) {
-        return disasm_jsr_jmp(out, out_sz, instr_sz, instr, offset, code, JsrJmp::kJmp);
+        return disasm_jmp(out, out_sz, instr_sz, instr, offset, code);
+    } else if ((instr & 0xf000) == 0x6000) {
+        return disasm_bra_bsr_bcc(out, out_sz, instr_sz, instr, offset, code);
     }
     return disasm_verbatim(out, out_sz, instr_sz, instr, offset, code);
 }

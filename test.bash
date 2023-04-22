@@ -16,13 +16,14 @@ mkdir -p ${TEST_DIR}
 echo "0" >${TRACE_FILE}
 
 run_test_simple() {
-  test_name=$1
-  data=$2
-  file_orig_bin=${TEST_DIR}/${test_name}.orig.bin
-  file_asm=${TEST_DIR}/${test_name}.S
-  file_as_o=${TEST_DIR}/${test_name}.as.o
-  file_as_bin=${TEST_DIR}/${test_name}.as.bin
-  echo -ne "Test ${test_name}... "
+  local test_name=$1
+  local test_name_sanitized=${test_name//[^a-zA-Z0-9_\-]/-}
+  local data=$2
+  local file_orig_bin=${TEST_DIR}/${test_name_sanitized}.orig.bin
+  local file_asm=${TEST_DIR}/${test_name_sanitized}.S
+  local file_as_o=${TEST_DIR}/${test_name_sanitized}.as.o
+  local file_as_bin=${TEST_DIR}/${test_name_sanitized}.as.bin
+  echo -ne "Test \"${test_name}\"... "
   echo -ne "${data}" >${file_orig_bin}
   ./cmake-build/m68k-disasm -t ${TRACE_FILE} -o ${file_asm} ${file_orig_bin}
   ${AS} -o ${file_as_o} ${file_asm}
@@ -41,133 +42,124 @@ run_test_simple() {
 }
 
 run_test_iterative() {
-  test_name=$1
-  prefix=$2
-  offset=$3
-  count=$4
-  step=$5
-  suffix=$6
-  file_orig_bin=${TEST_DIR}/${test_name}.orig.bin
-  file_asm=${TEST_DIR}/${test_name}.S
-  file_as_o=${TEST_DIR}/${test_name}.as.o
-  file_as_bin=${TEST_DIR}/${test_name}.as.bin
+  local test_name=$1
+  local prefix=$2
+  local offset=$3
+  local count=$4
+  local step=$5
+  local suffix=$6
   for i in $(seq 0 $(( step )) $(( count*step-1 )) ); do
-    value=$(printf "%02x\n" $(( offset+i )))
-    run_test_simple $test_name "${prefix}\x${value}${suffix}"
+    local value=$(printf "%02x" $(( offset+i )))
+    run_test_simple "${test_name}:${value}" "${prefix}\x${value}${suffix}"
   done
 }
 
-jsr_m2() {
-  # 4e90..4e97
-  #
-  # All registers
-  run_test_iterative ${FUNCNAME} "\x4e" 0x90 8 1 ""
-}
+# 60xx
+#
+run_test_simple "bras negative displacement" "\x60\xfc"
+run_test_simple "bras positive displacement" "\x60\x08"
 
-jsr_m5() {
-  # (4ea8..4eaf) xxxx
-  #
-  # Zero value
-  run_test_simple ${FUNCNAME} "\x4e\xa8\x00\x00"
-  # Positive value, all registers
-  run_test_iterative ${FUNCNAME} "\x4e" 0xa8 8 1 "\x00\x0a"
-  # Negative value
-  run_test_simple ${FUNCNAME} "\x4e\xa8\x80\x0f"
-}
+# 60xx (xxxx)
+#
+run_test_simple "braw negative displacement" "\x60\x00\xf8\x2e"
+run_test_simple "braw positive displacement" "\x60\x00\x03\xe6"
+run_test_simple "braw zero displacement" "\x60\x00\x00\x00"
 
-jsr_m6() {
-  # (4eb0..4eb7) xxxx
-  #
-  # Positive value, Arbitrary An register
-  run_test_iterative ${FUNCNAME} "\x4e" 0xb0 8 1 "\x00\x0f"
-  # Negative value
-  run_test_simple ${FUNCNAME} "\x4e\xb0\x00\xf0"
-  # Zero displacement
-  run_test_simple ${FUNCNAME} "\x4e\xb0\x00\x00"
-  # Address register
-  run_test_simple ${FUNCNAME} "\x4e\xb0\x80\x0a"
-  # Long displacement, positive
-  run_test_simple ${FUNCNAME} "\x4e\xb0\x08\x0c"
-  # Long displacement, negative
-  run_test_simple ${FUNCNAME} "\x4e\xb0\x08\xb0"
-  # Arbitrary Xn2
-  run_test_iterative ${FUNCNAME} "\x4e\xb0" 0x00 8 0x10 "\x0f"
-}
+# 61xx (xxxx)
+#
+run_test_simple "bsrs negative displacement" "\x61\x88"
+run_test_simple "bsrw positive displacement" "\x61\x00\x03\xe6"
 
-jsr_m7_xn0() {
-  # 43b8 xxxx Word displacement
-  #
-  # Zero value
-  run_test_simple ${FUNCNAME} "\x4e\xb8\x00\x00"
-  # Positive value
-  run_test_simple ${FUNCNAME} "\x4e\xb8\x00\x1f"
-  # Negative value
-  run_test_simple ${FUNCNAME} "\x4e\xb8\x8a\x0c"
-}
+# 6xxx
+#
+run_test_simple "bhis" "\x62\x0a"
+run_test_simple "blss" "\x63\x0a"
+run_test_simple "bccs" "\x64\x0a"
+run_test_simple "bcss" "\x65\x0a"
+run_test_simple "bnes" "\x66\x0a"
+run_test_simple "beqs" "\x67\x0a"
+run_test_simple "bvcs" "\x68\x0a"
+run_test_simple "bvss" "\x69\x0a"
+run_test_simple "bpls" "\x6a\x0a"
+run_test_simple "bmis" "\x6b\x0a"
+run_test_simple "bges" "\x6c\x0a"
+run_test_simple "blts" "\x6d\x0a"
+run_test_simple "bgts" "\x6e\x0a"
+run_test_simple "bles" "\x6f\x0a"
 
-jsr_m7_xn1() {
-  # 43b9 xxxx Long displacement
-  #
-  # Zero value
-  run_test_simple ${FUNCNAME} "\x4e\xb9\x00\x00\x00\x00"
-  # Positive value
-  run_test_simple ${FUNCNAME} "\x4e\xb9\x10\xbb\x43\x1f"
-  # Negative value
-  run_test_simple ${FUNCNAME} "\x4e\xb9\x80\xcc\xd9\x8a"
-}
+# 4e70
+#
+# reset
+run_test_simple "reset" "\x4e\x70"
 
-jsr_m7_xn2() {
-  # 43ba xxxx
-  #
-  # Zero value
-  run_test_simple ${FUNCNAME} "\x4e\xba\x00\x00"
-  # Positive value
-  run_test_simple ${FUNCNAME} "\x4e\xba\x00\x1f"
-  # Negative value
-  run_test_simple ${FUNCNAME} "\x4e\xba\x8a\x0c"
-}
+# 4e71
+#
+# nop
+run_test_simple "nop" "\x4e\x71"
 
-jsr_m7_xn3() {
-  # 43bb xxxx
-  #
-  # Positive value, Arbitrary Xn register
-  run_test_iterative ${FUNCNAME} "\x4e\xbb" 0x00 8 0x10 "\x1a"
-  # Negative value
-  run_test_simple ${FUNCNAME} "\x4e\xbb\x00\xf0"
-  # Zero displacement
-  run_test_simple ${FUNCNAME} "\x4e\xbb\x00\x00"
-  # Address register
-  run_test_simple ${FUNCNAME} "\x4e\xbb\x80\x0a"
-  # Long displacement, positive
-  run_test_simple ${FUNCNAME} "\x4e\xbb\x08\x0c"
-  # Long displacement, negative
-  run_test_simple ${FUNCNAME} "\x4e\xbb\x08\xb0"
-  # Arbitrary Xn2
-  run_test_iterative ${FUNCNAME} "\x4e\xbb" 0x00 8 0x10 "\x0f"
-}
+# 4e73
+#
+# rte
+run_test_simple "rte" "\x4e\x73"
 
-reset_nop_rte_rts_trapv_rtr() {
-  # 4e7x
-  #
-  # reset / 4e70
-  run_test_simple ${FUNCNAME} "\x4e\x70"
-  # nop / 4e71
-  run_test_simple ${FUNCNAME} "\x4e\x71"
-  # rte / 4e73
-  run_test_simple ${FUNCNAME} "\x4e\x73"
-  # rts / 4e75
-  run_test_simple ${FUNCNAME} "\x4e\x75"
-  # trapv / 4e76
-  run_test_simple ${FUNCNAME} "\x4e\x76"
-  # rtr / 4e77
-  run_test_simple ${FUNCNAME} "\x4e\x77"
-}
+# 4e75
+#
+# rts
+run_test_simple "rts" "\x4e\x75"
 
-jsr_m2
-jsr_m5
-jsr_m6
-jsr_m7_xn0
-jsr_m7_xn1
-jsr_m7_xn2
-jsr_m7_xn3
-reset_nop_rte_rts_trapv_rtr
+# 4e76
+#
+# trapv
+run_test_simple "trapv" "\x4e\x76"
+
+# 4e77
+#
+# rtr
+run_test_simple "rtr" "\x4e\x77"
+
+# 4e90..4e97
+#
+run_test_iterative "jsr M2 all An" "\x4e" 0x90 8 1 ""
+
+# (4ea8..4eaf) xxxx
+#
+run_test_simple "jsr M5 zero value" "\x4e\xa8\x00\x00"
+run_test_iterative "jsr M5 all An, positive" "\x4e" 0xa8 8 1 "\x00\x0a"
+run_test_simple "jsr M5 A0 negative" "\x4e\xa8\x80\x0f"
+
+# (4eb0..4eb7) xxxx
+#
+run_test_iterative "jsr M6 arbitrary An, positive" "\x4e" 0xb0 8 1 "\x00\x0f"
+run_test_simple "jsr M6 A0 negative" "\x4e\xb0\x00\xf0"
+run_test_simple "jsr M6 A0 zero" "\x4e\xb0\x00\x00"
+run_test_simple "jsr M6 address register" "\x4e\xb0\x80\x0a"
+run_test_simple "jsr M6 long displacement positive" "\x4e\xb0\x08\x0c"
+run_test_simple "jsr M6 long displacement negative" "\x4e\xb0\x08\xb0"
+run_test_iterative "jsr M6 arbitrary Xn2" "\x4e\xb0" 0x00 8 0x10 "\x0f"
+
+# 43b8 xxxx Word displacement
+#
+run_test_simple "jsr M7 Xn0 zero" "\x4e\xb8\x00\x00"
+run_test_simple "jsr M7 Xn0 positive" "\x4e\xb8\x00\x1f"
+run_test_simple "jsr M7 Xn0 negative" "\x4e\xb8\x8a\x0c"
+
+# 43b9 xxxx Long displacement
+#
+run_test_simple "jsr M7 X1 zero" "\x4e\xb9\x00\x00\x00\x00"
+run_test_simple "jsr M7 X1 positive" "\x4e\xb9\x10\xbb\x43\x1f"
+run_test_simple "jsr M7 X1 negative" "\x4e\xb9\x80\xcc\xd9\x8a"
+
+# 43ba xxxx
+#
+run_test_simple "jsr M7 X2 zero value" "\x4e\xba\x00\x00"
+run_test_simple "jsr M7 X2 positive value" "\x4e\xba\x00\x1f"
+run_test_simple "jsr M7 X2 negative value" "\x4e\xba\x8a\x0c"
+
+# 43bb xxxx
+#
+run_test_simple "jsr M7 X3 negative" "\x4e\xbb\x00\xf0"
+run_test_simple "jsr M7 X3 zero displacement" "\x4e\xbb\x00\x00"
+run_test_simple "jsr M7 X3 An2=A0" "\x4e\xbb\x80\x0a"
+run_test_simple "jsr M7 X3 long positive displacement" "\x4e\xbb\x08\x0c"
+run_test_simple "jsr M7 X3 long negative displacement" "\x4e\xbb\x08\xb0"
+run_test_iterative "jsr M7 X3 arbitrary Dn2" "\x4e\xbb" 0x00 8 0x10 "\x0f"
