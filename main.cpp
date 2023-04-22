@@ -196,7 +196,7 @@ static size_t ReadFromStream(DataBuffer &db, FILE *stream)
             } else if (db.buffer_size == db.occupied_size) {
                 db.Expand(db.buffer_size * 2);
             } else {
-                assert (false);
+                assert(false);
             }
         }
     }
@@ -207,10 +207,18 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
 {
     // Read machine code into buffer
     DataBuffer code{};
-    assert(ReadFromStream(code, input_stream));
+    const size_t input_size = ReadFromStream(code, input_stream);
+    if (input_size == 0) {
+        fprintf(stderr, "ReadFromStream(code, input_stream): Error: No data has been read\n");
+        return EXIT_FAILURE;
+    }
     // Read trace file into buffer
     DataBuffer trace_data{};
-    assert(ReadFromStream(trace_data, trace_stream));
+    const size_t trace_size = ReadFromStream(trace_data, trace_stream);
+    if (trace_size == 0) {
+        fprintf(stderr, "ReadFromStream(trace_data, trace_stream): Error: No data has been read\n");
+        return EXIT_FAILURE;
+    }
     // Parse trace file into map
     DisasmMap disasm_map{};
     ParseTraceData(disasm_map, trace_data);
