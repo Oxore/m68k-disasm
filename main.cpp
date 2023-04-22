@@ -37,7 +37,6 @@ enum class TracedNodeType {
 };
 
 struct DisasmNode {
-    DisasmNode *next{}; // Next node in the linked list
     TracedNodeType type{};
     uint32_t offset{};
     size_t size{kInstructionSizeStepBytes};
@@ -71,8 +70,7 @@ DisasmNode::~DisasmNode()
 }
 
 class DisasmMap {
-    DisasmNode *_first{};
-    DisasmNode *_last{};
+    DisasmNode *_map[kDisasmMapSizeElements]{};
     DisasmNode *findNodeByOffset(uint32_t offset) const;
 public:
     const DisasmNode *FindNodeByOffset(uint32_t offset) const
@@ -89,9 +87,8 @@ public:
 
 DisasmNode *DisasmMap::findNodeByOffset(uint32_t offset) const
 {
-    for (DisasmNode *node{_first}; node; node = node->next)
-        if (node->offset == offset)
-            return node;
+    if (offset < kRomSizeBytes)
+        return _map[offset / kInstructionSizeStepBytes];
     return nullptr;
 }
 
@@ -99,35 +96,28 @@ bool DisasmMap::InsertTracedNode(uint32_t offset, TracedNodeType type)
 {
     if (findNodeByOffset(offset))
         return false;
-    auto *node = new DisasmNode(DisasmNode{nullptr, type, offset});
+    auto *node = new DisasmNode(DisasmNode{type, offset});
     assert(node);
-    if (_first) {
-        _last->next = node;
-        _last = node;
-    } else {
-        _first = node;
-        _last = node;
-    }
+    _map[offset / kInstructionSizeStepBytes] = node;
     return true;
 }
 
 void DisasmMap::DisasmAll(const DataBuffer &code)
 {
-    for (DisasmNode *node{_first}; node; node = node->next) {
-        node->Disasm(code);
+    for (size_t i = 0; i < kDisasmMapSizeElements; i++) {
+        auto *node = _map[i];
+        if (node) {
+            _map[i]->Disasm(code);
+        }
     }
 }
 
 DisasmMap::~DisasmMap()
 {
-    DisasmNode *prev = nullptr, *node = _first;
-    while (node) {
-        prev = node;
-        node = node->next;
-        delete prev;
+    for (size_t i = 0; i < kDisasmMapSizeElements; i++) {
+        delete _map[i];
+        _map[i] = nullptr;
     }
-    _first = nullptr;
-    _last = nullptr;
 }
 
 static void RenderDisassembly(FILE *output, const DisasmMap &disasm_map, const DataBuffer &code)
@@ -220,12 +210,14 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
         return EXIT_FAILURE;
     }
     // Parse trace file into map
-    DisasmMap disasm_map{};
-    ParseTraceData(disasm_map, trace_data);
+    DisasmMap *disasm_map = new DisasmMap{};
+    assert(disasm_map);
+    ParseTraceData(*disasm_map, trace_data);
     // Disasm into output map
-    disasm_map.DisasmAll(code);
+    disasm_map->DisasmAll(code);
     // Print output into output_stream
-    RenderDisassembly(output_stream, disasm_map, code);
+    RenderDisassembly(output_stream, *disasm_map, code);
+    delete disasm_map;
     return 0;
 }
 

@@ -7,5 +7,6 @@
 *.txt
 *.trace
 *.log
+prof_output
 cmake[-_]build*/
 compile_commands.json

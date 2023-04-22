@@ -1,6 +1,8 @@
 #pragma once
 
 constexpr size_t kInstructionSizeStepBytes = 2;
+constexpr size_t kRomSizeBytes = 4 * 1024 * 1024;
+constexpr size_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStepBytes;
 
 static inline size_t Min(size_t a, size_t b) { return a < b ? a : b; }
 
