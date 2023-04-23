@@ -18,19 +18,6 @@
 #include <cerrno>
 #include <climits>
 
-/*
- * We need to be able to modify output to place a mark when some jumping back
- * is found, hence we should build output table instead of emitting asm right
- * away into the output stream.
- *
- * I think the output should be an ordered map of decoded instructions. When the
- * output is built according to the map we must walk through all the binary file
- * again alongside with the output map and emit the final output right into the
- * output stream.
- *
- * Trace data parser is needed. Maybe just using atol(3) will be ok.
- */
-
 class DisasmMap {
     DisasmNode *_map[kDisasmMapSizeElements]{};
     DisasmNode *findNodeByOffset(uint32_t offset) const;
@@ -127,34 +114,43 @@ static const char *ReferenceTypeToString(ReferenceType type)
 }
 
 static void RenderDisassembly(
-        FILE *output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &)
+        FILE *output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &s)
 {
     for (size_t i = 0; i < code.occupied_size;) {
         const DisasmNode *node = disasm_map.FindNodeByOffset(i);
         if (node) {
-            char comment[100]{};
-            RenderRawDataComment(comment, sizeof(comment) - 1, node->offset, node->size, code);
             if (node->ref_by) {
-                fprintf(output, "| XREFS:\n");
-                for (ReferenceNode *ref{node->ref_by}; ref; ref = ref->next) {
-                    if (ref->refs_count == 0) {
-                        continue;
+                if (s.xrefs_from) {
+                    fprintf(output, "| XREFS:\n");
+                    for (ReferenceNode *ref{node->ref_by}; ref; ref = ref->next) {
+                        if (ref->refs_count == 0) {
+                            continue;
+                        }
+                        fprintf(output, "|");
+                        for (size_t i = 0; i < ref->refs_count; i++) {
+                            const ReferenceRecord r = ref->refs[i];
+                            fprintf(output, " %s @%08x", ReferenceTypeToString(r.type), r.address);
+                        }
+                        fprintf(output, "\n");
                     }
-                    fprintf(output, "|");
-                    for (size_t i = 0; i < ref->refs_count; i++) {
-                        const ReferenceRecord r = ref->refs[i];
-                        fprintf(output, " %s @%08x", ReferenceTypeToString(r.type), r.address);
-                    }
-                    fprintf(output, "\n");
                 }
-                fprintf(output, ".L%08x:\n", node->offset);
-            }
-            char branch_addr[12]{};
-            if (node->has_branch_addr) {
-                snprintf(branch_addr, sizeof(branch_addr), " .L%08x", node->branch_addr);
+                if (s.marks) {
+                    fprintf(output, ".L%08x:\n", node->offset);
+                }
             }
             const char *const delimiter = node->arguments[0] != '\0' ? " " : "";
-            fprintf(output, "  %s%s%s |%s%s\n", node->mnemonic, delimiter, node->arguments, branch_addr, comment);
+            fprintf(output, "  %s%s%s", node->mnemonic, delimiter, node->arguments);
+            if (node->has_branch_addr && s.xrefs_to) {
+                char branch_addr[12]{};
+                snprintf(branch_addr, sizeof(branch_addr), " .L%08x", node->branch_addr);
+                fprintf(output, " |%s", branch_addr);
+            }
+            if (s.raw_data_comment) {
+                char raw_data_comment[100]{};
+                RenderRawDataComment(raw_data_comment, sizeof(raw_data_comment) - 1, node->offset, node->size, code);
+                fprintf(output, " |%s", raw_data_comment);
+            }
+            fprintf(output, "\n");
             i += node->size;
         } else {
             fprintf(output, "  .short 0x%02x%02x\n", code.buffer[i], code.buffer[i + 1]);
@@ -274,13 +270,73 @@ static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings
     return 0;
 }
 
-static void PrintUsage(FILE *stream, const char *argv0)
+static bool IsValidFeature(const char *feature)
 {
-    fprintf(stream, "Usage: %s [options] [<input-file-name>]\n", argv0);
-    fprintf(stream, "  -h, --help,           Show this message\n");
-    fprintf(stream, "  -o, --output,         Where to write disassembly to (stdout if not set)\n");
-    fprintf(stream, "  -t, --pc-trace,       File containing PC trace\n");
-    fprintf(stream, "  <input_file_name>     Binary file with machine code (stdin if not set)\n");
+    constexpr size_t sizeof_no_prefix = strlen("no-");
+    if (0 == memcmp(feature, "no-", sizeof_no_prefix)) {
+        feature += sizeof_no_prefix;
+    }
+    if (0 == strcmp(feature, "rdc")) {
+        return true;
+    } else if (0 == strcmp(feature, "marks")) {
+        return true;
+    } else if (0 == strcmp(feature, "rel-marks")) {
+        return true;
+    } else if (0 == strcmp(feature, "abs-marks")) {
+        return true;
+    } else if (0 == strcmp(feature, "xrefs-from")) {
+        return true;
+    } else if (0 == strcmp(feature, "xrefs-to")) {
+        return true;
+    }
+    return false;
+}
+
+static void ApplyFeature(Settings& s, const char *feature)
+{
+    bool disable{};
+    constexpr size_t sizeof_no_prefix = strlen("no-");
+    if (0 == memcmp(feature, "no-", sizeof_no_prefix)) {
+        disable = true;
+        feature += sizeof_no_prefix;
+    }
+    if (0 == strcmp(feature, "rdc")) {
+        s.raw_data_comment = !disable;
+    } else if (0 == strcmp(feature, "marks")) {
+        s.marks = !disable;
+    } else if (0 == strcmp(feature, "rel-marks")) {
+        s.rel_marks = !disable;
+    } else if (0 == strcmp(feature, "abs-marks")) {
+        s.abs_marks = !disable;
+    } else if (0 == strcmp(feature, "xrefs-from")) {
+        s.xrefs_from = !disable;
+    } else if (0 == strcmp(feature, "xrefs-to")) {
+        s.xrefs_to = !disable;
+    }
+}
+
+static void PrintUsage(FILE *s, const char *argv0)
+{
+    fprintf(s, "Usage: %s [options] [<input-file-name>]\n", argv0);
+    fprintf(s, "Options:\n");
+    fprintf(s, "  -h, --help,           Show this message\n");
+    fprintf(s, "  -o, --output,         Where to write disassembly to (stdout if not set)\n");
+    fprintf(s, "  -t, --pc-trace,       File containing PC trace\n");
+    fprintf(s, "  -f, --feature=[no-]<feature>\n");
+    fprintf(s, "                        Enable or disable (with \"no-\" prefix) a feature\n");
+    fprintf(s, "                        Available features:\n");
+    fprintf(s, "                        rdc         print raw data comment\n");
+    fprintf(s, "                        marks       print marks above all places that have jumps\n");
+    fprintf(s, "                                    from somewhere\n");
+    fprintf(s, "                        rel-marks   use mark instead of number on relative\n");
+    fprintf(s, "                                    branch or call\n");
+    fprintf(s, "                        abs-marks   use mark instead of number on absolute\n");
+    fprintf(s, "                                    branch or call\n");
+    fprintf(s, "                        xrefs-from  print xrefs comments above all places that\n");
+    fprintf(s, "                                    have xrefs\n");
+    fprintf(s, "                        xrefs-to    print xrefs comments after all branch \n");
+    fprintf(s, "                                    instructions\n");
+    fprintf(s, "  <input_file_name>     Binary file with machine code (stdin if not set)\n");
 }
 
 int main(int, char* argv[])
@@ -289,11 +345,13 @@ int main(int, char* argv[])
         {"help", 'h', OPTPARSE_NONE},
         {"output", 'o', OPTPARSE_REQUIRED},
         {"pc-trace", 't', OPTPARSE_REQUIRED},
+        {"feature", 'f', OPTPARSE_OPTIONAL},
         {},
     };
     const char *trace_file_name = nullptr;
     const char *output_file_name = nullptr;
     const char *input_file_name = nullptr;
+    Settings s{};
     struct optparse options;
     optparse_init(&options, argv);
     // Parse opts
@@ -309,6 +367,13 @@ int main(int, char* argv[])
             break;
         case 't':
             trace_file_name = options.optarg;
+            break;
+        case 'f':
+            if (!IsValidFeature(options.optarg)) {
+                fprintf(stderr, "main: Error: Unknown feature \"%s\", exiting\n", options.optarg);
+                return EXIT_FAILURE;
+            }
+            ApplyFeature(s, options.optarg);
             break;
         case '?':
             fprintf(stderr, "main: optparse_long: Error: \"%s\"\n", options.errmsg);
@@ -353,7 +418,6 @@ int main(int, char* argv[])
             return EXIT_FAILURE;
         }
     }
-    Settings s{};
     // Run the program
     const int ret = trace_stream
         ? M68kDisasmByTrace(input_stream, output_stream, trace_stream, s)

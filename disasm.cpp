@@ -80,6 +80,7 @@ static void disasm_jsr_jmp(
                 node.branch_addr = static_cast<uint32_t>(dispmt);
                 node.has_branch_addr = true;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
+                // FIXME support s.abs_marks option
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
                 return;
             }
@@ -90,6 +91,7 @@ static void disasm_jsr_jmp(
                 node.branch_addr = static_cast<uint32_t>(dispmt);
                 node.has_branch_addr = true;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
+                // FIXME support s.abs_marks option
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
                 return;
             }
@@ -101,6 +103,7 @@ static void disasm_jsr_jmp(
                 node.has_branch_addr = true;
                 node.size = kInstructionSizeStepBytes * 2;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
+                // FIXME support s.rel_marks option
                 snprintf(node.arguments, kArgsBufferSize, "%%pc@(%d:w)", dispmt);
                 return;
             }
@@ -206,6 +209,7 @@ static void disasm_bra_bsr_bcc(
     node.has_branch_addr = true;
     const char * const sign = dispmt >= 0 ? "+" : "";
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s", mnemonic, size_spec);
+    // FIXME support s.rel_marks option
     snprintf(node.arguments, kArgsBufferSize, ".%s%d", sign, dispmt);
     return;
 }
@@ -329,6 +333,7 @@ static void disasm_dbcc(DisasmNode& node, uint16_t instr, const DataBuffer &code
     node.has_branch_addr = true;
     const char * const sign = dispmt >= 0 ? "+" : "";
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
+    // FIXME support s.rel_marks option
     snprintf(node.arguments, kArgsBufferSize, "%%d%d,.%s%d", regnum, sign, dispmt);
     return;
 }

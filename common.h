@@ -1,6 +1,12 @@
 #pragma once
 
 struct Settings {
+    bool marks{};
+    bool rel_marks{};
+    bool abs_marks{};
+    bool xrefs_to{};
+    bool xrefs_from{};
+    bool raw_data_comment{};
 };
 
 constexpr size_t kInstructionSizeStepBytes = 2;
