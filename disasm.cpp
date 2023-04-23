@@ -14,27 +14,6 @@ static void disasm_verbatim(
     snprintf(node.arguments, kArgsBufferSize, "0x%04x", instr);
 }
 
-static void disasm_mfff0_v4e70(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
-{
-    node.size = kInstructionSizeStepBytes;
-    if (instr == 0x4e70) {
-        snprintf(node.mnemonic, kMnemonicBufferSize, "reset");
-    } else if (instr == 0x4e71) {
-        snprintf(node.mnemonic, kMnemonicBufferSize, "nop");
-    } else if (instr == 0x4e73) {
-        snprintf(node.mnemonic, kMnemonicBufferSize, "rte");
-    } else if (instr == 0x4e75) {
-        snprintf(node.mnemonic, kMnemonicBufferSize, "rts");
-    } else if (instr == 0x4e76) {
-        snprintf(node.mnemonic, kMnemonicBufferSize, "trapv");
-    } else if (instr == 0x4e77) {
-        snprintf(node.mnemonic, kMnemonicBufferSize, "rtr");
-    } else {
-        disasm_verbatim(node, instr, code, s);
-    }
-}
-
 enum class JsrJmp {
     kJsr,
     kJmp,
@@ -230,19 +209,139 @@ static void disasm_bra_bsr_bcc(
     return;
 }
 
-static void m68k_disasm(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static void chunk_mf000_v0000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
-    if ((instr & 0xfff0) == 0x4e70) {
-        return disasm_mfff0_v4e70(node, instr, code, s);
-    } else if ((instr & 0xffc0) == 0x4e80) {
-        return disasm_jsr(node, instr, code, s);
-    } else if ((instr & 0xffc0) == 0x4ec0) {
-        return disasm_jmp(node, instr, code, s);
-    } else if ((instr & 0xf000) == 0x6000) {
-        return disasm_bra_bsr_bcc(node, instr, code, s);
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v1000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v2000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v3000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v4000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    if (i == 0x4e70) {
+        n.size = kInstructionSizeStepBytes;
+        snprintf(n.mnemonic, kMnemonicBufferSize, "reset");
+        return;
+    } else if (i == 0x4e71) {
+        n.size = kInstructionSizeStepBytes;
+        snprintf(n.mnemonic, kMnemonicBufferSize, "nop");
+        return;
+    } else if (i == 0x4e73) {
+        n.size = kInstructionSizeStepBytes;
+        snprintf(n.mnemonic, kMnemonicBufferSize, "rte");
+        return;
+    } else if (i == 0x4e75) {
+        n.size = kInstructionSizeStepBytes;
+        snprintf(n.mnemonic, kMnemonicBufferSize, "rts");
+        return;
+    } else if (i == 0x4e76) {
+        n.size = kInstructionSizeStepBytes;
+        snprintf(n.mnemonic, kMnemonicBufferSize, "trapv");
+        return;
+    } else if (i == 0x4e77) {
+        n.size = kInstructionSizeStepBytes;
+        snprintf(n.mnemonic, kMnemonicBufferSize, "rtr");
+        return;
+    } else if ((i & 0xffc0) == 0x4e80) {
+        return disasm_jsr(n, i, c, s);
+    } else if ((i & 0xffc0) == 0x4ec0) {
+        return disasm_jmp(n, i, c, s);
     }
-    return disasm_verbatim(node, instr, code, s);
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v5000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v6000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_bra_bsr_bcc(n, i, c, s);
+}
+
+static void chunk_mf000_v7000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v8000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_v9000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_va000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_vb000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_vc000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_vd000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_ve000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void chunk_mf000_vf000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_verbatim(n, i, c, s);
+}
+
+static void (*disasm_mf000[16])(DisasmNode&, uint16_t, const DataBuffer &, const Settings &s) = {
+    chunk_mf000_v0000,
+    chunk_mf000_v1000,
+    chunk_mf000_v2000,
+    chunk_mf000_v3000,
+    chunk_mf000_v4000,
+    chunk_mf000_v5000,
+    chunk_mf000_v6000,
+    chunk_mf000_v7000,
+    chunk_mf000_v8000,
+    chunk_mf000_v9000,
+    chunk_mf000_va000,
+    chunk_mf000_vb000,
+    chunk_mf000_vc000,
+    chunk_mf000_vd000,
+    chunk_mf000_ve000,
+    chunk_mf000_vf000,
+};
+
+static void m68k_disasm(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    const size_t selector = (i & 0xf000) >> 12;
+    assert(selector < 16);
+    return (disasm_mf000[selector])(n, i, c, s);
 }
 
 void DisasmNode::Disasm(const DataBuffer &code, const Settings &s)

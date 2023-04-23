@@ -10,6 +10,9 @@ TEST_DIR=/tmp/m68k-disasm-tests
 TRACE_FILE=${TEST_DIR}/trace.txt
 
 set -e
+CRED="\033[31m"
+CGREEN="\033[32m"
+CRST="\033[39m"
 
 rm -rf ${TEST_DIR}
 mkdir -p ${TEST_DIR}
@@ -29,14 +32,17 @@ run_test_simple() {
   ${AS} -o ${file_as_o} ${file_asm}
   ${OBJCOPY} ${file_as_o} -O binary ${file_as_bin}
   if ! cmp ${file_orig_bin} ${file_as_bin} >/dev/null 2>&1; then
-    echo "FAIL"
+    echo -e "${CRED}FAIL${CRST}: output and input binaries do not match"
     cat ${file_asm}
     echo ${file_orig_bin}
     hexdump -Cv ${file_orig_bin} | head -n1
     echo ${file_as_bin}
     hexdump -Cv ${file_as_bin} | head -n1
+  elif grep ".short" ${file_asm} >/dev/null 2>&1; then
+    echo -e "${CRED}FAIL${CRST}: .short emitted"
+    cat ${file_asm}
   else
-    echo "OK"
+    echo -e "${CGREEN}OK${CRST}"
     #cat ${file_asm}
   fi
 }

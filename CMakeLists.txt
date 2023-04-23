@@ -11,7 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 set(common_flags)
 set(common_debug_flags "-fsanitize=address -fno-omit-frame-pointer -O1")
 # Uncomment to enalbe profiler
-set(common_debug_flags "${common_debug_flags} -pg")
+#set(common_debug_flags "${common_debug_flags} -pg")
 set(common_compile_flags "-Wall -Wextra -pedantic")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${common_compile_flags} ${common_flags}")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${common_debug_flags}")
