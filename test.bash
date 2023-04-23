@@ -60,6 +60,11 @@ run_test_iterative() {
   done
 }
 
+# 50cf xxxx
+#
+run_test_simple "dbt negative displacement" "\x50\xcf\xff\xfc"
+run_test_simple "dbt positive displacement" "\x50\xcf\x01\x08"
+
 # 60xx
 #
 run_test_simple "bras negative displacement" "\x60\xfc"

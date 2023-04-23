@@ -161,7 +161,7 @@ enum class Condition {
     kLE = 15,
 };
 
-static inline const char *branch_instr_name_by_cond(Condition condition)
+static inline const char *bcc_mnemonic_by_condition(Condition condition)
 {
     switch (condition) {
     case Condition::kT:  return "bra"; // 60xx
@@ -181,6 +181,7 @@ static inline const char *branch_instr_name_by_cond(Condition condition)
     case Condition::kGT: return "bgt"; // 6exx
     case Condition::kLE: return "ble"; // 6fxx
     }
+    assert(false);
     return "?";
 }
 
@@ -188,7 +189,7 @@ static void disasm_bra_bsr_bcc(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &)
 {
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
-    const char *mnemonic = branch_instr_name_by_cond(condition);
+    const char *mnemonic = bcc_mnemonic_by_condition(condition);
     // False condition Indicates BSR
     node.is_call = (condition == Condition::kF);
     int dispmt = static_cast<int8_t>(instr & 0xff);
@@ -229,43 +230,123 @@ static void chunk_mf000_v3000(DisasmNode& n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_v4000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_v4000(DisasmNode& node, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     if (i == 0x4e70) {
-        n.size = kInstructionSizeStepBytes;
-        snprintf(n.mnemonic, kMnemonicBufferSize, "reset");
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "reset");
         return;
     } else if (i == 0x4e71) {
-        n.size = kInstructionSizeStepBytes;
-        snprintf(n.mnemonic, kMnemonicBufferSize, "nop");
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "nop");
         return;
     } else if (i == 0x4e73) {
-        n.size = kInstructionSizeStepBytes;
-        snprintf(n.mnemonic, kMnemonicBufferSize, "rte");
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "rte");
         return;
     } else if (i == 0x4e75) {
-        n.size = kInstructionSizeStepBytes;
-        snprintf(n.mnemonic, kMnemonicBufferSize, "rts");
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "rts");
         return;
     } else if (i == 0x4e76) {
-        n.size = kInstructionSizeStepBytes;
-        snprintf(n.mnemonic, kMnemonicBufferSize, "trapv");
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "trapv");
         return;
     } else if (i == 0x4e77) {
-        n.size = kInstructionSizeStepBytes;
-        snprintf(n.mnemonic, kMnemonicBufferSize, "rtr");
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "rtr");
         return;
     } else if ((i & 0xffc0) == 0x4e80) {
-        return disasm_jsr(n, i, c, s);
+        return disasm_jsr(node, i, c, s);
     } else if ((i & 0xffc0) == 0x4ec0) {
-        return disasm_jmp(n, i, c, s);
+        return disasm_jmp(node, i, c, s);
     }
-    return disasm_verbatim(n, i, c, s);
+    return disasm_verbatim(node, i, c, s);
 }
 
-static void chunk_mf000_v5000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+enum class OpSize {
+    kByte = 0,
+    kWord = 1,
+    kLong = 2,
+    kInvalid = 3,
+};
+
+static void disasm_subq(
+        DisasmNode& n, uint16_t instr, const DataBuffer &c, const Settings &s, int m, OpSize opsize)
 {
-    return disasm_verbatim(n, i, c, s);
+    (void) m;
+    (void) opsize;
+    return disasm_verbatim(n, instr, c, s);
+}
+
+static void disasm_addq(
+        DisasmNode& n, uint16_t instr, const DataBuffer &c, const Settings &s, int m, OpSize opsize)
+{
+    (void) m;
+    (void) opsize;
+    return disasm_verbatim(n, instr, c, s);
+}
+
+static void disasm_scc(DisasmNode& n, uint16_t instr, const DataBuffer &c, const Settings &s, int m)
+{
+    (void) m;
+    return disasm_verbatim(n, instr, c, s);
+}
+
+static inline const char *dbcc_mnemonic_by_condition(Condition condition)
+{
+    switch (condition) {
+    case Condition::kT:  return "dbt"; // 50xx
+    case Condition::kF:  return "dbf"; // 51xx
+    case Condition::kHI: return "dbhi"; // 52xx
+    case Condition::kLS: return "dbls"; // 53xx
+    case Condition::kCC: return "dbcc"; // 54xx
+    case Condition::kCS: return "dbcs"; // 55xx
+    case Condition::kNE: return "dbne"; // 56xx
+    case Condition::kEQ: return "dbeq"; // 57xx
+    case Condition::kVC: return "dbvc"; // 58xx
+    case Condition::kVS: return "dbvs"; // 59xx
+    case Condition::kPL: return "dbpl"; // 5axx
+    case Condition::kMI: return "dbmi"; // 5bxx
+    case Condition::kGE: return "dbge"; // 5cxx
+    case Condition::kLT: return "dblt"; // 5dxx
+    case Condition::kGT: return "dbgt"; // 5exx
+    case Condition::kLE: return "dble"; // 5fxx
+    }
+    assert(false);
+    return "?";
+}
+
+static void disasm_dbcc(DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &)
+{
+    node.size = kInstructionSizeStepBytes * 2;
+    Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
+    const char *mnemonic = dbcc_mnemonic_by_condition(condition);
+    const int regnum = (instr & 7);
+    const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes) +
+        kInstructionSizeStepBytes;
+    node.branch_addr = node.offset + dispmt;
+    node.has_branch_addr = true;
+    const char * const sign = dispmt >= 0 ? "+" : "";
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
+    snprintf(node.arguments, kArgsBufferSize, "%%d%d,.%s%d", regnum, sign, dispmt);
+    return;
+}
+
+static void chunk_mf000_v5000(DisasmNode& n, uint16_t instr, const DataBuffer &c, const Settings &s)
+{
+    const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
+    const int m = ((instr >> 3) & 7);
+    if (opsize == OpSize::kInvalid) {
+        if (m == 1) {
+            return disasm_dbcc(n, instr, c, s);
+        }
+        return disasm_scc(n, instr, c, s, m);
+    }
+    if ((instr >> 8) & 1) {
+        return disasm_subq(n, instr, c, s, m, opsize);
+    }
+    return disasm_addq(n, instr, c, s, m, opsize);
 }
 
 static void chunk_mf000_v6000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
