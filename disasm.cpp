@@ -44,6 +44,7 @@ static void disasm_jsr_jmp(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, JsrJmp jsrjmp)
 {
     const char *mnemonic = (jsrjmp == JsrJmp::kJsr) ? "jsr" : "jmp";
+    node.is_call = (jsrjmp == JsrJmp::kJsr);
     const int addrmode = instr & 0x3f;
     const int m = (addrmode >> 3) & 0x7;
     const int xn = addrmode & 0x7;
@@ -52,6 +53,8 @@ static void disasm_jsr_jmp(
     case 1: // 4e88 .. 4e8f
         break;
     case 2: // 4e90 .. 4e97
+        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // trace
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
         snprintf(node.arguments, kArgsBufferSize, "%%a%d@", xn);
@@ -61,6 +64,8 @@ static void disasm_jsr_jmp(
         break;
     case 5: // 4ea8 .. 4eaf, Displacement
         {
+            // NOTE: dynamic jump, branch_addr may possibly be obtained during
+            // the trace
             node.size = kInstructionSizeStepBytes * 2;
             const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
             snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
@@ -69,6 +74,8 @@ static void disasm_jsr_jmp(
         }
     case 6: // 4eb0 .. 4eb7, Brief Extension Word
         {
+            // NOTE: dynamic jump, branch_addr may possibly be obtained during
+            // the trace
             node.size = kInstructionSizeStepBytes * 2;
             const uint16_t briefext = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
             const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
@@ -84,9 +91,15 @@ static void disasm_jsr_jmp(
         switch (xn) {
         case 0: // 4eb8 (xxx).W
             {
-                // TODO set has_branch_addr and branch_addr
                 node.size = kInstructionSizeStepBytes * 2;
+                // This shit is real: it is sign extend value
                 const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+                // So jumping to negative value will land PC on something like
+                // 0xffff8a0c, effectively making jump possible only to lowest
+                // 32K range 0..0x7fff and highest 32K range
+                // 0xffff8000...0xffffffff
+                node.branch_addr = static_cast<uint32_t>(dispmt);
+                node.has_branch_addr = true;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
                 return;
@@ -95,20 +108,27 @@ static void disasm_jsr_jmp(
             {
                 node.size = kInstructionSizeStepBytes * 3;
                 const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+                node.branch_addr = static_cast<uint32_t>(dispmt);
+                node.has_branch_addr = true;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
                 return;
             }
         case 2: // 4eba, Displacement
             {
-                node.size = kInstructionSizeStepBytes * 2;
                 const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+                // Add 2 to current PC, as usual
+                node.branch_addr = node.offset + dispmt + kInstructionSizeStepBytes;
+                node.has_branch_addr = true;
+                node.size = kInstructionSizeStepBytes * 2;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
                 snprintf(node.arguments, kArgsBufferSize, "%%pc@(%d:w)", dispmt);
                 return;
             }
         case 3: // 4ebb
             {
+                // NOTE: dynamic jump, branch_addr may possibly be obtained
+                // during the trace
                 node.size = kInstructionSizeStepBytes * 2;
                 const uint16_t briefext = GetU16BE(
                         code.buffer + node.offset + kInstructionSizeStepBytes);
@@ -188,7 +208,10 @@ static inline const char *branch_instr_name_by_cond(Condition condition)
 static void disasm_bra_bsr_bcc(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &)
 {
-    const char *mnemonic = branch_instr_name_by_cond(static_cast<Condition>((instr >> 8) & 0xf));
+    Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
+    const char *mnemonic = branch_instr_name_by_cond(condition);
+    // False condition Indicates BSR
+    node.is_call = (condition == Condition::kF);
     int dispmt = static_cast<int8_t>(instr & 0xff);
     const char *size_spec = "s";
     if (dispmt == 0) {
@@ -236,7 +259,7 @@ void DisasmNode::Disasm(const DataBuffer &code, const Settings &s)
 }
 
 
-void DisasmNode::AddReferencedBy(uint32_t offset)
+void DisasmNode::AddReferencedBy(uint32_t offset, ReferenceType type)
 {
     ReferenceNode *node{};
     if (this->last_ref_by) {
@@ -246,7 +269,7 @@ void DisasmNode::AddReferencedBy(uint32_t offset)
         assert(node);
         this->ref_by = this->last_ref_by = node;
     }
-    node->refs[node->refs_count] = offset;
+    node->refs[node->refs_count] = ReferenceRecord{type, offset};
     node->refs_count++;
     if (node->refs_count >= kRefsCountPerBuffer) {
         ReferenceNode *new_node = new ReferenceNode{};

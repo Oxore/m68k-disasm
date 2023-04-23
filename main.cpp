@@ -82,7 +82,8 @@ void DisasmMap::DisasmAll(const DataBuffer &code, const Settings & s)
             auto *ref_node = insertTracedNode(
                     node->branch_addr, TracedNodeType::kInstruction);
             ref_node->Disasm(code, s);
-            ref_node->AddReferencedBy(node->offset);
+            ref_node->AddReferencedBy(
+                    node->offset, node->is_call ? ReferenceType::kCall : ReferenceType::kBranch);
         }
     }
 }
@@ -115,6 +116,16 @@ static size_t RenderRawDataComment(
     return overall_sz;
 }
 
+static const char *ReferenceTypeToString(ReferenceType type)
+{
+    switch (type) {
+    case ReferenceType::kUnknown: return "UNKN";
+    case ReferenceType::kBranch: return "BRANCH";
+    case ReferenceType::kCall: return "CALL";
+    }
+    return "UNKN";
+}
+
 static void RenderDisassembly(
         FILE *output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &)
 {
@@ -124,11 +135,15 @@ static void RenderDisassembly(
             char comment[100]{};
             RenderRawDataComment(comment, sizeof(comment) - 1, node->offset, node->size, code);
             if (node->ref_by) {
-                fprintf(output, "| Referenced by:\n");
+                fprintf(output, "| XREFS:\n");
                 for (ReferenceNode *ref{node->ref_by}; ref; ref = ref->next) {
+                    if (ref->refs_count == 0) {
+                        continue;
+                    }
                     fprintf(output, "|");
                     for (size_t i = 0; i < ref->refs_count; i++) {
-                        fprintf(output, " @%08x", ref->refs[i]);
+                        const ReferenceRecord r = ref->refs[i];
+                        fprintf(output, " %s @%08x", ReferenceTypeToString(r.type), r.address);
                     }
                     fprintf(output, "\n");
                 }

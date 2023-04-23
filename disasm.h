@@ -17,9 +17,20 @@ constexpr size_t kMnemonicBufferSize = 8;
 constexpr size_t kArgsBufferSize = 64;
 constexpr size_t kMarkBufferSize = 64;
 
+enum class ReferenceType {
+    kUnknown = 0,
+    kBranch,
+    kCall,
+};
+
+struct ReferenceRecord {
+    ReferenceType type{};
+    uint32_t address{};
+};
+
 struct ReferenceNode {
     ReferenceNode *next{};
-    uint32_t refs[kRefsCountPerBuffer];
+    ReferenceRecord refs[kRefsCountPerBuffer];
     uint32_t refs_count{};
 };
 
@@ -33,6 +44,9 @@ struct DisasmNode {
     bool has_branch_addr{};
     /// Absolute address of where to branch to
     uint32_t branch_addr{};
+    /// Indicates whether instruction is a call (BSR, JSR) or just a branch
+    /// (Bcc, JMP) if `has_branch_addr` is set
+    bool is_call{};
     /// Mnemonic of the instruction at the current offset
     char mnemonic[kMnemonicBufferSize]{};
     /// Formatted arguments of the instruction;
@@ -43,7 +57,7 @@ struct DisasmNode {
     ReferenceNode *ref_by{};
     ReferenceNode *last_ref_by{};
     void Disasm(const DataBuffer &code, const Settings&);
-    void AddReferencedBy(uint32_t offset);
+    void AddReferencedBy(uint32_t offset, ReferenceType);
     ~DisasmNode();
 private:
 };
