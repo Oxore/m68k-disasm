@@ -6,6 +6,8 @@
 
 AS=m68k-none-elf-as
 OBJCOPY=m68k-none-elf-objcopy
+LD="m68k-none-elf-ld -Ttest.ld"
+DISASM="./cmake-build/m68k-disasm -fabs-marks -frel-marks -fmarks"
 TEST_DIR=/tmp/m68k-disasm-tests
 TRACE_FILE=${TEST_DIR}/trace.txt
 
@@ -25,12 +27,14 @@ run_test_simple() {
   local file_orig_bin=${TEST_DIR}/${test_name_sanitized}.orig.bin
   local file_asm=${TEST_DIR}/${test_name_sanitized}.S
   local file_as_o=${TEST_DIR}/${test_name_sanitized}.as.o
+  local file_as_elf=${TEST_DIR}/${test_name_sanitized}.as.elf
   local file_as_bin=${TEST_DIR}/${test_name_sanitized}.as.bin
   echo -ne "Test \"${test_name}\"... "
   echo -ne "${data}" >${file_orig_bin}
-  ./cmake-build/m68k-disasm -t ${TRACE_FILE} -o ${file_asm} ${file_orig_bin}
+  ${DISASM} -t ${TRACE_FILE} -o ${file_asm} ${file_orig_bin}
   ${AS} -o ${file_as_o} ${file_asm}
-  ${OBJCOPY} ${file_as_o} -O binary ${file_as_bin}
+  ${LD} -o ${file_as_elf} ${file_as_o}
+  ${OBJCOPY} ${file_as_elf} -O binary ${file_as_bin}
   if ! cmp ${file_orig_bin} ${file_as_bin} >/dev/null 2>&1; then
     echo -e "${CRED}FAIL${CRST}: output and input binaries do not match"
     cat ${file_asm}
@@ -148,25 +152,25 @@ run_test_simple "jsr M6 long displacement positive" "\x4e\xb0\x08\x0c"
 run_test_simple "jsr M6 long displacement negative" "\x4e\xb0\x08\xb0"
 run_test_iterative "jsr M6 arbitrary Xn2" "\x4e\xb0" 0x00 8 0x10 "\x0f"
 
-# 43b8 xxxx Word displacement
+# 4eb8 xxxx Word displacement
 #
 run_test_simple "jsr M7 Xn0 zero" "\x4e\xb8\x00\x00"
 run_test_simple "jsr M7 Xn0 positive" "\x4e\xb8\x00\x1f"
 run_test_simple "jsr M7 Xn0 negative" "\x4e\xb8\x8a\x0c"
 
-# 43b9 xxxx Long displacement
+# 4eb9 xxxx Long displacement
 #
 run_test_simple "jsr M7 X1 zero" "\x4e\xb9\x00\x00\x00\x00"
 run_test_simple "jsr M7 X1 positive" "\x4e\xb9\x10\xbb\x43\x1f"
 run_test_simple "jsr M7 X1 negative" "\x4e\xb9\x80\xcc\xd9\x8a"
 
-# 43ba xxxx
+# 4eba xxxx
 #
 run_test_simple "jsr M7 X2 zero value" "\x4e\xba\x00\x00"
 run_test_simple "jsr M7 X2 positive value" "\x4e\xba\x00\x1f"
 run_test_simple "jsr M7 X2 negative value" "\x4e\xba\x8a\x0c"
 
-# 43bb xxxx
+# 4ebb xxxx
 #
 run_test_simple "jsr M7 X3 negative" "\x4e\xbb\x00\xf0"
 run_test_simple "jsr M7 X3 zero displacement" "\x4e\xbb\x00\x00"

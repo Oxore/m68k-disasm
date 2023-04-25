@@ -28,20 +28,20 @@ static void disasm_jsr_jmp(
     const int m = (addrmode >> 3) & 0x7;
     const int xn = addrmode & 0x7;
     switch (m) {
-    case 0: // 4e80 .. 4e87
-    case 1: // 4e88 .. 4e8f
+    case 0: // 4e80..4e87 / 4ec0..4ec7
+    case 1: // 4e88..4e8f / 4ec8..4ecf
         break;
-    case 2: // 4e90 .. 4e97
+    case 2: // 4e90..4e97 / 4ed0..4ed7
         // NOTE: dynamic jump, branch_addr may possibly be obtained during the
         // trace
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
         snprintf(node.arguments, kArgsBufferSize, "%%a%d@", xn);
         return;
-    case 3: // 4e98 .. 4e9f
-    case 4: // 4ea0 .. 4ea7
+    case 3: // 4e98..4e9f / 4ed8..4edf
+    case 4: // 4ea0..4ea7 / 4ee0..4ee7
         break;
-    case 5: // 4ea8 .. 4eaf, Displacement
+    case 5: // 4ea8..4eaf / 4ee8..4eef, Displacement
         {
             // NOTE: dynamic jump, branch_addr may possibly be obtained during
             // the trace
@@ -51,7 +51,7 @@ static void disasm_jsr_jmp(
             snprintf(node.arguments, kArgsBufferSize, "%%a%d@(%d:w)", xn, dispmt);
             return;
         }
-    case 6: // 4eb0 .. 4eb7, Brief Extension Word
+    case 6: // 4eb0..4eb7 / 4ef0..4ef7, Brief Extension Word
         {
             // NOTE: dynamic jump, branch_addr may possibly be obtained during
             // the trace
@@ -66,9 +66,9 @@ static void disasm_jsr_jmp(
                     "%%a%d@(%d,%%%c%d:%c)", xn, dispmt, reg, xn2, size_spec);
             return;
         }
-    case 7: // 4eb8 .. 4ebf, some are with Brief Extension Word
+    case 7: // 4eb8..4ebf / 4ef8..4eff, some are with Brief Extension Word
         switch (xn) {
-        case 0: // 4eb8 (xxx).W
+        case 0: // 4eb8 / 4ef8 (xxx).W
             {
                 node.size = kInstructionSizeStepBytes * 2;
                 // This shit is real: it is sign extend value
@@ -77,37 +77,41 @@ static void disasm_jsr_jmp(
                 // 0xffff8a0c, effectively making jump possible only to lowest
                 // 32K range 0..0x7fff and highest 32K range
                 // 0xffff8000...0xffffffff
-                node.branch_addr = static_cast<uint32_t>(dispmt);
+                const uint32_t branch_addr = static_cast<uint32_t>(dispmt);
+                node.branch_addr = branch_addr;
                 node.has_branch_addr = true;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-                // FIXME support s.abs_marks option
+                // FIXME support s.abs_marks option for this instruction
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
                 return;
             }
-        case 1: // 4eb9 (xxx).L
+        case 1: // 4eb9 / 4ef9 (xxx).L
             {
                 node.size = kInstructionSizeStepBytes * 3;
                 const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-                node.branch_addr = static_cast<uint32_t>(dispmt);
+                const uint32_t branch_addr = static_cast<uint32_t>(dispmt);
+                node.branch_addr = branch_addr;
                 node.has_branch_addr = true;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-                // FIXME support s.abs_marks option
+                // FIXME support s.abs_marks option for this instruction
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
                 return;
             }
-        case 2: // 4eba, Displacement
+        case 2: // 4eba / 4efa, Displacement
             {
                 const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 // Add 2 to current PC, as usual
-                node.branch_addr = node.offset + dispmt + kInstructionSizeStepBytes;
+                const uint32_t branch_addr = static_cast<uint32_t>(
+                        node.offset + dispmt + kInstructionSizeStepBytes);
+                node.branch_addr = branch_addr;
                 node.has_branch_addr = true;
                 node.size = kInstructionSizeStepBytes * 2;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-                // FIXME support s.rel_marks option
+                // FIXME support s.abs_marks option for this instruction
                 snprintf(node.arguments, kArgsBufferSize, "%%pc@(%d:w)", dispmt);
                 return;
             }
-        case 3: // 4ebb
+        case 3: // 4ebb / 4efb
             {
                 // NOTE: dynamic jump, branch_addr may possibly be obtained
                 // during the trace
@@ -123,9 +127,9 @@ static void disasm_jsr_jmp(
                         "%%pc@(%d,%%%c%d:%c)", dispmt, reg, xn2, size_spec);
                 return;
             }
-        case 4: // 4ebc
-        case 5: // 4ebd
-        case 6: // 4ebe
+        case 4: // 4ebc / 4efb
+        case 5: // 4ebd / 4efd
+        case 6: // 4ebe / 4efe
             break;
         }
         break;
@@ -205,11 +209,12 @@ static void disasm_bra_bsr_bcc(
         node.size = kInstructionSizeStepBytes;
     }
     dispmt += kInstructionSizeStepBytes;
-    node.branch_addr = node.offset + dispmt;
+    const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
+    node.branch_addr = branch_addr;
     node.has_branch_addr = true;
-    const char * const sign = dispmt >= 0 ? "+" : "";
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s", mnemonic, size_spec);
-    // FIXME support s.rel_marks option
+    const char * const sign = dispmt >= 0 ? "+" : "";
+    // FIXME support s.rel_marks option for this instruction
     snprintf(node.arguments, kArgsBufferSize, ".%s%d", sign, dispmt);
     return;
 }
@@ -327,13 +332,14 @@ static void disasm_dbcc(DisasmNode& node, uint16_t instr, const DataBuffer &code
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     const char *mnemonic = dbcc_mnemonic_by_condition(condition);
     const int regnum = (instr & 7);
-    const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes) +
-        kInstructionSizeStepBytes;
-    node.branch_addr = node.offset + dispmt;
+    int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+    const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
+    node.branch_addr = branch_addr;
     node.has_branch_addr = true;
-    const char * const sign = dispmt >= 0 ? "+" : "";
+    dispmt += kInstructionSizeStepBytes;
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-    // FIXME support s.rel_marks option
+    const char * const sign = dispmt >= 0 ? "+" : "";
+    // FIXME support s.rel_marks option for this instruction
     snprintf(node.arguments, kArgsBufferSize, "%%d%d,.%s%d", regnum, sign, dispmt);
     return;
 }
