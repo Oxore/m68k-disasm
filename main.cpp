@@ -18,7 +18,13 @@
 #include <cerrno>
 #include <climits>
 
+enum class DisasmMapType {
+    kTraced,
+    kRaw,
+};
+
 class DisasmMap {
+    const DisasmMapType _type;
     DisasmNode *_map[kDisasmMapSizeElements]{};
     DisasmNode *findNodeByOffset(uint32_t offset) const;
     DisasmNode *insertTracedNode(uint32_t offset, TracedNodeType);
@@ -31,10 +37,14 @@ public:
     // been changed
     bool InsertTracedNode(uint32_t offset, TracedNodeType type)
     {
+        assert(_type == DisasmMapType::kTraced);
         return nullptr != insertTracedNode(offset, type);
     }
     // This function disassembles everything that has been traced
+    void DisasmTraced(const DataBuffer &code, const Settings &);
+    // This function disassembles just everything from the beginning
     void DisasmAll(const DataBuffer &code, const Settings &);
+    DisasmMap(DisasmMapType type): _type(type) {}
     ~DisasmMap();
 };
 
@@ -57,8 +67,9 @@ DisasmNode *DisasmMap::insertTracedNode(uint32_t offset, TracedNodeType type)
     return node;
 }
 
-void DisasmMap::DisasmAll(const DataBuffer &code, const Settings & s)
+void DisasmMap::DisasmTraced(const DataBuffer &code, const Settings & s)
 {
+    assert(_type == DisasmMapType::kTraced);
     for (size_t i = 0; i < kDisasmMapSizeElements; i++) {
         auto *node = _map[i];
         if (!node) {
@@ -72,6 +83,16 @@ void DisasmMap::DisasmAll(const DataBuffer &code, const Settings & s)
             ref_node->AddReferencedBy(
                     node->offset, node->is_call ? ReferenceType::kCall : ReferenceType::kBranch);
         }
+    }
+}
+
+void DisasmMap::DisasmAll(const DataBuffer &code, const Settings & s)
+{
+    assert(_type == DisasmMapType::kRaw);
+    for (size_t i = 0; i < Min(kDisasmMapSizeElements, code.occupied_size);) {
+        auto node = insertTracedNode(i, TracedNodeType::kInstruction);
+        node->Disasm(code, s);
+        i += node->size;
     }
 }
 
@@ -239,34 +260,40 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
         return EXIT_FAILURE;
     }
     // Parse trace file into map
-    DisasmMap *disasm_map = new DisasmMap{};
+    DisasmMap *disasm_map = new DisasmMap{DisasmMapType::kTraced};
     assert(disasm_map);
     ParseTraceData(*disasm_map, trace_data);
     // Disasm into output map
-    disasm_map->DisasmAll(code, s);
+    disasm_map->DisasmTraced(code, s);
     // Print output into output_stream
     RenderDisassembly(output_stream, *disasm_map, code, s);
     delete disasm_map;
     return 0;
 }
 
-static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings &)
+static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings &s)
 {
-    uint8_t instruction[kInstructionSizeStepBytes]{};
-    const size_t read_size = kInstructionSizeStepBytes;
-    while (1) {
-        const size_t fread_ret = fread(instruction, 1, read_size, input_stream);
-        if (fread_ret == 0) {
-            const int err = errno;
-            if (feof(input_stream)) {
-                break;
-            } else {
-                fprintf(stderr, "ReadFromStream: fread(%zu): Error (%d): \"%s\"\n", read_size, err, strerror(err));
-                return EXIT_FAILURE;
-            }
-        }
-        fprintf(output_stream, "  .short 0x%02x%02x\n", instruction[0], instruction[1]);
+    // Read machine code into buffer
+    DataBuffer code{};
+    const size_t input_size = ReadFromStream(code, input_stream);
+    if (input_size == 0) {
+        fprintf(stderr, "ReadFromStream(code, input_stream): Error: No data has been read\n");
+        return EXIT_FAILURE;
     }
+    // Expand a little just in case there is truncated instruction in the end of
+    // the buffer so it will not fall out of buffer trying to fetch arguments
+    // from additional extension words.
+    if (code.occupied_size + 100 > code.buffer_size) {
+        code.Expand(code.occupied_size + 100);
+    }
+    // Create the map and disasseble
+    DisasmMap *disasm_map = new DisasmMap{DisasmMapType::kRaw};
+    assert(disasm_map);
+    // Disasm into output map
+    disasm_map->DisasmAll(code, s);
+    // Print output into output_stream
+    RenderDisassembly(output_stream, *disasm_map, code, s);
+    delete disasm_map;
     return 0;
 }
 
