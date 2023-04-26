@@ -64,6 +64,42 @@ run_test_iterative() {
   done
 }
 
+# 50f9 xxxx
+#
+run_test_simple "st d16:l positive" "\x51\xf9\x00\x00\x00\x74"
+run_test_simple "st d16:l negative" "\x51\xf9\xc0\xfe\xba\xbe"
+
+# 50f8 xxxx
+#
+run_test_simple "st d16:w positive" "\x51\xf8\x00\x66"
+run_test_simple "st d16:w negative" "\x51\xf8\x80\xc4"
+
+# 51f0 xxxx
+#
+run_test_simple "sf (d16:w,A4,D3) positive" "\x51\xf4\xb0\x04"
+run_test_simple "sf (d16:w,A3,A6) negative" "\x51\xf3\x60\xf2"
+
+# 5fe8 xxxx
+#
+run_test_simple "sle (d16,A0) positive" "\x5f\xe8\x00\xa0"
+run_test_simple "sle (d16,A0) negative" "\x5f\xe8\xe4\x02"
+
+# 5ee1
+#
+run_test_simple "sgt -(%a1)" "\x5e\xe1"
+
+# 56df
+#
+run_test_simple "sne (%a7)+" "\x56\xdf"
+
+# 5dd3
+#
+run_test_simple "slt (%a3)" "\x5d\xd3"
+
+# 57cx
+#
+run_test_iterative "seq Xn" "\x57" 0xc0 8 1
+
 # 50cf xxxx
 #
 run_test_simple "dbt negative displacement" "\x50\xcf\xff\xfc"
