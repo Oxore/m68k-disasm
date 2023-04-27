@@ -280,20 +280,108 @@ enum class OpSize {
     kInvalid = 3,
 };
 
-static void disasm_subq(
-        DisasmNode& n, uint16_t instr, const DataBuffer &c, const Settings &s, int m, OpSize opsize)
+static char suffix_from_opsize(OpSize opsize)
 {
-    (void) m;
-    (void) opsize;
-    return disasm_verbatim(n, instr, c, s);
+    switch (opsize) {
+    case OpSize::kByte: return 'b';
+    case OpSize::kWord: return 'w';
+    case OpSize::kLong: return 'l';
+    case OpSize::kInvalid: return 'l';
+    }
+    return 'l';
 }
 
-static void disasm_addq(
-        DisasmNode& n, uint16_t instr, const DataBuffer &c, const Settings &s, int m, OpSize opsize)
+static void disasm_addq_subq(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, int m, OpSize opsize)
 {
-    (void) m;
-    (void) opsize;
-    return disasm_verbatim(n, instr, c, s);
+    const char *mnemonic = (instr >> 8) & 1 ? "subq" : "addq";
+    const char suffix = suffix_from_opsize(opsize);
+    const unsigned imm = ((uint8_t((instr >> 9) & 7) - 1) & 7) + 1;
+    const int xn = (instr & 7);
+    switch (m) {
+    case 0: // 5x00..5x07 / 5x40..5x47 / 5x80..5x87, Dn
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+        snprintf(node.arguments, kArgsBufferSize, "#%u,%%d%d", imm, xn);
+        return;
+    case 1: // 5x08..5x0f / 5x48..5x4f / 5x88..5x8f, An
+        if (opsize == OpSize::kByte) {
+            // 5x08..5x0f
+            // addqb and subqb with An do not exist
+            return disasm_verbatim(node, instr, code, s);
+        }
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+        snprintf(node.arguments, kArgsBufferSize, "#%u,%%a%d", imm, xn);
+        return;
+    case 2: // 5x10..5x17 / 5x50..5x57 / 5x90..5x97, (An)
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+        snprintf(node.arguments, kArgsBufferSize, "#%u,%%a%d@", imm, xn);
+        return;
+    case 3: // 5x18..5x1f / 5x58..5x5f / 5x98..5x9f, (An)+
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+        snprintf(node.arguments, kArgsBufferSize, "#%u,%%a%d@+", imm, xn);
+        return;
+    case 4: // 5x20..5x27 / 5x60..5x67 / 5xa0..5xa7, -(An)
+        node.size = kInstructionSizeStepBytes;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+        snprintf(node.arguments, kArgsBufferSize, "#%u,%%a%d@-", imm, xn);
+        return;
+    case 5: // 5x28..5x2f / 5x68..5x6f / 5xa8..5xaf, (d16, An), Displacement Word
+        node.size = kInstructionSizeStepBytes * 2;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+        {
+            const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+            snprintf(node.arguments, kArgsBufferSize, "#%u,%%a%d@(%d:w)", imm, xn, dispmt);
+        }
+        return;
+    case 6: // 5x30..5x37 / 5x70..5x77 / 5xb0..5xb7, (d16, An, Xi), Brief Extension Word
+        node.size = kInstructionSizeStepBytes * 2;
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+        {
+            const uint16_t briefext = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+            const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
+            const int xi = (briefext >> 12) & 7;
+            const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
+            const int8_t dispmt = briefext & 0xff;
+            snprintf(node.arguments, kArgsBufferSize,
+                    "#%u,%%a%d@(%d,%%%c%d:%c)", imm, xn, dispmt, reg, xi, size_spec);
+        }
+        return;
+    case 7: // 5x38..5x3f / 5x78..5x7f / 5xb8..5xbf
+        switch (xn) {
+        case 0: // 5x38 / 5x78 / 5xb8 (xxx).W
+            node.size = kInstructionSizeStepBytes * 2;
+            snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+            {
+                // This shit is real: it is sign extend value
+                const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+                snprintf(node.arguments, kArgsBufferSize, "#%u,0x%x:w", imm, dispmt);
+                return;
+            }
+            return;
+        case 1: // 5x39 / 5x79 / 5xb9 (xxx).L
+            node.size = kInstructionSizeStepBytes * 3;
+            snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+            {
+                const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+                snprintf(node.arguments, kArgsBufferSize, "#%u,0x%x:l", imm, dispmt);
+                return;
+            }
+            return;
+        case 2: // 5x3a / 5x7a / 5xba
+        case 3: // 5x3b / 5x7b / 5xbb
+        case 4: // 5x3c / 5x7c / 5xbc
+        case 5: // 5x3d / 5x7d / 5xbd
+        case 6: // 5x3e / 5x7e / 5xbe
+            // Does not exist
+            break;
+        }
+        break;
+    }
+    return disasm_verbatim(node, instr, code, s);
 }
 
 static inline const char *scc_mnemonic_by_condition(Condition condition)
@@ -373,7 +461,7 @@ static void disasm_scc(
         return;
     case 7: // 5xf8..5xff
         switch (xn) {
-        case 0: // 4eb8 (xxx).W
+        case 0: // 5xf8 (xxx).W
             node.size = kInstructionSizeStepBytes * 2;
             snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
             {
@@ -383,7 +471,7 @@ static void disasm_scc(
                 return;
             }
             return;
-        case 1: // 4eb9 (xxx).L
+        case 1: // 5xf9 (xxx).L
             node.size = kInstructionSizeStepBytes * 3;
             snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
             {
@@ -392,11 +480,11 @@ static void disasm_scc(
                 return;
             }
             return;
-        case 2: // 4eba
-        case 3: // 4ebb
-        case 4: // 4ebc
-        case 5: // 4ebd
-        case 6: // 4ebe
+        case 2: // 5xfa
+        case 3: // 5xfb
+        case 4: // 5xfc
+        case 5: // 5xfd
+        case 6: // 5xfe
             // Does not exist
             break;
         }
@@ -457,19 +545,12 @@ static void chunk_mf000_v5000(DisasmNode& n, uint16_t instr, const DataBuffer &c
         }
         return disasm_scc(n, instr, c, s, m);
     }
-    if ((instr >> 8) & 1) {
-        return disasm_subq(n, instr, c, s, m, opsize);
-    }
-    return disasm_addq(n, instr, c, s, m, opsize);
+    return disasm_addq_subq(n, instr, c, s, m, opsize);
 }
 
-static void chunk_mf000_v6000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void disasm_moveq(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
-    return disasm_bra_bsr_bcc(n, i, c, s);
-}
-
-static void chunk_mf000_v7000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
+    // TODO
     return disasm_verbatim(n, i, c, s);
 }
 
@@ -479,11 +560,6 @@ static void chunk_mf000_v8000(DisasmNode& n, uint16_t i, const DataBuffer &c, co
 }
 
 static void chunk_mf000_v9000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
-    return disasm_verbatim(n, i, c, s);
-}
-
-static void chunk_mf000_va000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
 }
@@ -508,35 +584,28 @@ static void chunk_mf000_ve000(DisasmNode& n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_vf000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
-    return disasm_verbatim(n, i, c, s);
-}
-
-static void (*disasm_mf000[16])(DisasmNode&, uint16_t, const DataBuffer &, const Settings &s) = {
-    chunk_mf000_v0000,
-    chunk_mf000_v1000,
-    chunk_mf000_v2000,
-    chunk_mf000_v3000,
-    chunk_mf000_v4000,
-    chunk_mf000_v5000,
-    chunk_mf000_v6000,
-    chunk_mf000_v7000,
-    chunk_mf000_v8000,
-    chunk_mf000_v9000,
-    chunk_mf000_va000,
-    chunk_mf000_vb000,
-    chunk_mf000_vc000,
-    chunk_mf000_vd000,
-    chunk_mf000_ve000,
-    chunk_mf000_vf000,
-};
-
 static void m68k_disasm(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
-    const size_t selector = (i & 0xf000) >> 12;
-    assert(selector < 16);
-    return (disasm_mf000[selector])(n, i, c, s);
+    switch ((i & 0xf000) >> 12) {
+    case 0x0: return chunk_mf000_v0000(n, i, c, s);
+    case 0x1: return chunk_mf000_v1000(n, i, c, s);
+    case 0x2: return chunk_mf000_v2000(n, i, c, s);
+    case 0x3: return chunk_mf000_v3000(n, i, c, s);
+    case 0x4: return chunk_mf000_v4000(n, i, c, s);
+    case 0x5: return chunk_mf000_v5000(n, i, c, s);
+    case 0x6: return disasm_bra_bsr_bcc(n, i, c, s);
+    case 0x7: return disasm_moveq(n, i, c, s);
+    case 0x8: return chunk_mf000_v8000(n, i, c, s);
+    case 0x9: return chunk_mf000_v9000(n, i, c, s);
+    case 0xa: return disasm_verbatim(n, i, c, s);
+    case 0xb: return chunk_mf000_vb000(n, i, c, s);
+    case 0xc: return chunk_mf000_vc000(n, i, c, s);
+    case 0xd: return chunk_mf000_vd000(n, i, c, s);
+    case 0xe: return chunk_mf000_ve000(n, i, c, s);
+    case 0xf: return disasm_verbatim(n, i, c, s);
+    }
+    assert(false);
+    return disasm_verbatim(n, i, c, s);
 }
 
 void DisasmNode::Disasm(const DataBuffer &code, const Settings &s)
