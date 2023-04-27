@@ -333,22 +333,22 @@ static void disasm_scc(
         snprintf(node.arguments, kArgsBufferSize, "%%d%d", xn);
         return;
     case 1: // 5xc8..5xcf, An
-        // Does not exist
+        // Does not exist (used to distinguish DBcc)
         break;
     case 2: // 5xd0..5xd7 (An)
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-        snprintf(node.arguments, kArgsBufferSize, "(%%a%d)", xn);
+        snprintf(node.arguments, kArgsBufferSize, "%%a%d@", xn);
         return;
     case 3: // 5xd8..5xdf (An)+
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-        snprintf(node.arguments, kArgsBufferSize, "(%%a%d)+", xn);
+        snprintf(node.arguments, kArgsBufferSize, "%%a%d@+", xn);
         return;
     case 4: // 5xe0..5xe7 -(An)
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-        snprintf(node.arguments, kArgsBufferSize, "-(%%a%d)", xn);
+        snprintf(node.arguments, kArgsBufferSize, "%%a%d@-", xn);
         return;
     case 5: // 5xe8..5xef, (d16, An), Displacement Word
         node.size = kInstructionSizeStepBytes * 2;
