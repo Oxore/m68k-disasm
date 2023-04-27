@@ -42,7 +42,7 @@ static void disasm_jsr_jmp(
     case 4: // 4ea0..4ea7 / 4ee0..4ee7
         break;
     case 5: // 4ea8..4eaf / 4ee8..4eef, Displacement
-        {
+        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
             // NOTE: dynamic jump, branch_addr may possibly be obtained during
             // the trace
             node.size = kInstructionSizeStepBytes * 2;
@@ -51,12 +51,18 @@ static void disasm_jsr_jmp(
             snprintf(node.arguments, kArgsBufferSize, "%%a%d@(%d:w)", xn, dispmt);
             return;
         }
+        break;
     case 6: // 4eb0..4eb7 / 4ef0..4ef7, Brief Extension Word
-        {
+        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
             // NOTE: dynamic jump, branch_addr may possibly be obtained during
             // the trace
             node.size = kInstructionSizeStepBytes * 2;
             const uint16_t briefext = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+            if (briefext & 0x0700) {
+                // briefext must have zeros on 8, 9 an 10-th bits,
+                // i.e. xxxx_x000_xxxx_xxxx
+                break;
+            }
             const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
             const int xn2 = (briefext >> 12) & 7;
             const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
@@ -66,10 +72,11 @@ static void disasm_jsr_jmp(
                     "%%a%d@(%d,%%%c%d:%c)", xn, dispmt, reg, xn2, size_spec);
             return;
         }
+        break;
     case 7: // 4eb8..4ebf / 4ef8..4eff, some are with Brief Extension Word
         switch (xn) {
         case 0: // 4eb8 / 4ef8 (xxx).W
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
                 node.size = kInstructionSizeStepBytes * 2;
                 // This shit is real: it is sign extend value
                 const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
@@ -85,8 +92,9 @@ static void disasm_jsr_jmp(
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
                 return;
             }
+            break;
         case 1: // 4eb9 / 4ef9 (xxx).L
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
                 node.size = kInstructionSizeStepBytes * 3;
                 const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 const uint32_t branch_addr = static_cast<uint32_t>(dispmt);
@@ -97,8 +105,9 @@ static void disasm_jsr_jmp(
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
                 return;
             }
+            break;
         case 2: // 4eba / 4efa, Displacement
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
                 const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 // Add 2 to current PC, as usual
                 const uint32_t branch_addr = static_cast<uint32_t>(
@@ -111,13 +120,19 @@ static void disasm_jsr_jmp(
                 snprintf(node.arguments, kArgsBufferSize, "%%pc@(%d:w)", dispmt);
                 return;
             }
+            break;
         case 3: // 4ebb / 4efb
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
                 // NOTE: dynamic jump, branch_addr may possibly be obtained
                 // during the trace
                 node.size = kInstructionSizeStepBytes * 2;
                 const uint16_t briefext = GetU16BE(
                         code.buffer + node.offset + kInstructionSizeStepBytes);
+                if (briefext & 0x0700) {
+                    // briefext must have zeros on 8, 9 an 10-th bits,
+                    // i.e. xxxx_x000_xxxx_xxxx
+                    break;
+                }
                 const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
                 const int xn2 = (briefext >> 12) & 7;
                 const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
@@ -127,6 +142,7 @@ static void disasm_jsr_jmp(
                         "%%pc@(%d,%%%c%d:%c)", dispmt, reg, xn2, size_spec);
                 return;
             }
+            break;
         case 4: // 4ebc / 4efb
         case 5: // 4ebd / 4efd
         case 6: // 4ebe / 4efe
@@ -193,21 +209,27 @@ static inline const char *bcc_mnemonic_by_condition(Condition condition)
 }
 
 static void disasm_bra_bsr_bcc(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     const char *mnemonic = bcc_mnemonic_by_condition(condition);
     // False condition Indicates BSR
-    node.is_call = (condition == Condition::kF);
     int dispmt = static_cast<int8_t>(instr & 0xff);
+    if (dispmt % kInstructionSizeStepBytes) {
+        return disasm_verbatim(node, instr, code, s);
+    }
     const char *size_spec = "s";
     if (dispmt == 0) {
         dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+        if (dispmt % kInstructionSizeStepBytes) {
+            return disasm_verbatim(node, instr, code, s);
+        }
         node.size = kInstructionSizeStepBytes * 2;
         size_spec = "w";
     } else {
         node.size = kInstructionSizeStepBytes;
     }
+    node.is_call = (condition == Condition::kF);
     dispmt += kInstructionSizeStepBytes;
     const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
     node.branch_addr = branch_addr;
@@ -330,47 +352,54 @@ static void disasm_addq_subq(
         snprintf(node.arguments, kArgsBufferSize, "#%u,%%a%d@-", imm, xn);
         return;
     case 5: // 5x28..5x2f / 5x68..5x6f / 5xa8..5xaf, (d16, An), Displacement Word
-        node.size = kInstructionSizeStepBytes * 2;
-        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-        {
+        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+            node.size = kInstructionSizeStepBytes * 2;
+            snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
             const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
             snprintf(node.arguments, kArgsBufferSize, "#%u,%%a%d@(%d:w)", imm, xn, dispmt);
+            return;
         }
-        return;
+        break;
     case 6: // 5x30..5x37 / 5x70..5x77 / 5xb0..5xb7, (d16, An, Xi), Brief Extension Word
-        node.size = kInstructionSizeStepBytes * 2;
-        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-        {
+        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+            node.size = kInstructionSizeStepBytes * 2;
+            snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
             const uint16_t briefext = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+            if (briefext & 0x0700) {
+                // briefext must have zeros on 8, 9 an 10-th bits,
+                // i.e. xxxx_x000_xxxx_xxxx
+                break;
+            }
             const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
             const int xi = (briefext >> 12) & 7;
             const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
             const int8_t dispmt = briefext & 0xff;
             snprintf(node.arguments, kArgsBufferSize,
                     "#%u,%%a%d@(%d,%%%c%d:%c)", imm, xn, dispmt, reg, xi, size_spec);
+            return;
         }
-        return;
+        break;
     case 7: // 5x38..5x3f / 5x78..5x7f / 5xb8..5xbf
         switch (xn) {
         case 0: // 5x38 / 5x78 / 5xb8 (xxx).W
-            node.size = kInstructionSizeStepBytes * 2;
-            snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+                node.size = kInstructionSizeStepBytes * 2;
+                snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
                 // This shit is real: it is sign extend value
                 const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.arguments, kArgsBufferSize, "#%u,0x%x:w", imm, dispmt);
                 return;
             }
-            return;
+            break;
         case 1: // 5x39 / 5x79 / 5xb9 (xxx).L
-            node.size = kInstructionSizeStepBytes * 3;
-            snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+                node.size = kInstructionSizeStepBytes * 3;
+                snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
                 const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.arguments, kArgsBufferSize, "#%u,0x%x:l", imm, dispmt);
                 return;
             }
-            return;
+            break;
         case 2: // 5x3a / 5x7a / 5xba
         case 3: // 5x3b / 5x7b / 5xbb
         case 4: // 5x3c / 5x7c / 5xbc
@@ -439,47 +468,54 @@ static void disasm_scc(
         snprintf(node.arguments, kArgsBufferSize, "%%a%d@-", xn);
         return;
     case 5: // 5xe8..5xef, (d16, An), Displacement Word
-        node.size = kInstructionSizeStepBytes * 2;
-        snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-        {
+        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+            node.size = kInstructionSizeStepBytes * 2;
+            snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
             const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
             snprintf(node.arguments, kArgsBufferSize, "%%a%d@(%d:w)", xn, dispmt);
+            return;
         }
-        return;
+        break;
     case 6: // 5xf0..5xf7, (d16, An, Xi), Brief Extension Word
-        node.size = kInstructionSizeStepBytes * 2;
-        snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-        {
+        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+            node.size = kInstructionSizeStepBytes * 2;
+            snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
             const uint16_t briefext = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+            if (briefext & 0x0700) {
+                // briefext must have zeros on 8, 9 an 10-th bits,
+                // i.e. xxxx_x000_xxxx_xxxx
+                break;
+            }
             const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
             const int xi = (briefext >> 12) & 7;
             const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
             const int8_t dispmt = briefext & 0xff;
             snprintf(node.arguments, kArgsBufferSize,
                     "%%a%d@(%d,%%%c%d:%c)", xn, dispmt, reg, xi, size_spec);
+            return;
         }
-        return;
+        break;
     case 7: // 5xf8..5xff
         switch (xn) {
         case 0: // 5xf8 (xxx).W
             node.size = kInstructionSizeStepBytes * 2;
             snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
                 // This shit is real: it is sign extend value
                 const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
                 return;
             }
-            return;
+            break;
         case 1: // 5xf9 (xxx).L
             node.size = kInstructionSizeStepBytes * 3;
             snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-            {
+            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
                 const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
                 return;
             }
-            return;
+            break;
         case 2: // 5xfa
         case 3: // 5xfb
         case 4: // 5xfc
@@ -517,17 +553,23 @@ static inline const char *dbcc_mnemonic_by_condition(Condition condition)
     return "?";
 }
 
-static void disasm_dbcc(DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &)
+static void disasm_dbcc(DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
+    if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const int16_t dispmt_raw = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+    if (dispmt_raw % kInstructionSizeStepBytes) {
+        return disasm_verbatim(node, instr, code, s);
+    }
     node.size = kInstructionSizeStepBytes * 2;
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     const char *mnemonic = dbcc_mnemonic_by_condition(condition);
     const int dn = (instr & 7);
-    int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-    const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
+    const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt_raw);
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
-    dispmt += kInstructionSizeStepBytes;
+    const int16_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
     const char * const sign = dispmt >= 0 ? "+" : "";
     // FIXME support s.rel_marks option for this instruction
