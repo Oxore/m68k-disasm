@@ -64,6 +64,44 @@ run_test_iterative() {
   done
 }
 
+# TODO add some more tests for addq, i.e. for briefext, (xxx).W and (xxx).L
+
+# 5x28..5x2f / 5x68..5x6f / 5xa8..5xaf, (d16, An), Displacement Word
+#
+run_test_simple "addqb #8,a7(positive)" "\x50\x2f\x00\x80"
+run_test_simple "addqw #5,a2(negative)" "\x5a\x6a\xfc\xfc"
+run_test_simple "addql #1,a3(negative)" "\x52\xab\xff\xff"
+
+# 5x20..5x27 / 5x60..5x67 / 5xa0..5xa7, -(An)
+#
+run_test_simple "addqb #8,-(a7)" "\x50\x27"
+run_test_simple "addqw #5,-(a2)" "\x5a\x62"
+run_test_simple "addql #1,-(a3)" "\x52\xa3"
+
+# 5x18..5x1f / 5x58..5x5f / 5x98..5x9f, (An)+
+#
+run_test_simple "addqb #8,(a7)+" "\x50\x1f"
+run_test_simple "addqw #5,(a2)+" "\x5a\x5a"
+run_test_simple "addql #1,(a3)+" "\x52\x9d"
+
+# 5x10..5x17 / 5x50..5x57 / 5x90..5x97, (An)
+#
+run_test_simple "addqb #8,(a7)" "\x50\x17"
+run_test_simple "addqw #5,(a2)" "\x5a\x52"
+run_test_simple "addql #1,(a3)" "\x52\x93"
+
+# 5x08..5x0f / 5x48..5x4f / 5x88..5x8f, An
+#
+# NOTE: addqb with An does not exits
+run_test_simple "addqw #6,a7" "\x5c\x4f"
+run_test_simple "addql #1,a5" "\x52\x8d"
+
+# 5x00..5x07 / 5x40..5x47 / 5x80..5x87, Dn
+#
+run_test_simple "addqb #8,d7" "\x50\x07"
+run_test_simple "addqw #5,d2" "\x5a\x42"
+run_test_simple "addql #1,d3" "\x52\x83"
+
 # 50f9 xxxx
 #
 run_test_simple "st d16:l positive" "\x51\xf9\x00\x00\x00\x74"
