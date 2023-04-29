@@ -196,7 +196,7 @@ constexpr AddrModeArg AddrModeArg::Fetch(
             }
             break;
         case 1: // (xxx).L, Additional Long
-            if (offset < code.occupied_size) {
+            if (offset + kInstructionSizeStepBytes < code.occupied_size) {
                 const int32_t l = GetI32BE(code.buffer + offset);
                 return AddrModeArg::Long(m, xn, l);
             }
@@ -551,7 +551,7 @@ static void disasm_addq_subq(
             }
             break;
         case 1: // 5x39 / 5x79 / 5xb9 (xxx).L
-            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+            if (node.offset + kInstructionSizeStepBytes * 2 < code.occupied_size) {
                 node.size = kInstructionSizeStepBytes * 3;
                 snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
                 const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
@@ -657,9 +657,9 @@ static void disasm_scc(
     case 7: // 5xf8..5xff
         switch (xn) {
         case 0: // 5xf8 (xxx).W
-            node.size = kInstructionSizeStepBytes * 2;
-            snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
             if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+                node.size = kInstructionSizeStepBytes * 2;
+                snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
                 // This shit is real: it is sign extend value
                 const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
@@ -667,9 +667,9 @@ static void disasm_scc(
             }
             break;
         case 1: // 5xf9 (xxx).L
-            node.size = kInstructionSizeStepBytes * 3;
-            snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+            if (node.offset + kInstructionSizeStepBytes * 2 < code.occupied_size) {
+                node.size = kInstructionSizeStepBytes * 3;
+                snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
                 const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
                 snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
                 return;

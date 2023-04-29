@@ -42,7 +42,7 @@ run_test_random() {
     exit
   else
     echo -e "${CGREEN}OK${CRST}"
-    #cat ${file_asm}
+    rm ${file_orig_bin} ${file_asm} ${file_as_o} ${file_as_elf} ${file_as_bin}
   fi
 }
 
