@@ -205,6 +205,11 @@ run_test_simple "reset" "\x4e\x70"
 # nop
 run_test_simple "nop" "\x4e\x71"
 
+# 4e72 xxxx
+#
+run_test_simple "stop #8:w" "\x4e\x72\x00\x08"
+run_test_simple "stop #ffff:w" "\x4e\x72\xff\xff"
+
 # 4e73
 #
 # rte

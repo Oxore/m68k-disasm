@@ -420,38 +420,47 @@ static void chunk_mf000_v3000(DisasmNode& n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_v4000(DisasmNode& node, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_v4000(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    if (i == 0x4e70) {
+    if (instr == 0x4e70) {
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "reset");
         return;
-    } else if (i == 0x4e71) {
+    } else if (instr == 0x4e71) {
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "nop");
         return;
-    } else if (i == 0x4e73) {
+    } else if (instr == 0x4e72) {
+        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
+            node.size = kInstructionSizeStepBytes * 2;
+            snprintf(node.mnemonic, kMnemonicBufferSize, "stop");
+            const uint16_t sr_imm = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+            snprintf(node.arguments, kArgsBufferSize, "#0x%x:w", sr_imm);
+            return;
+        }
+    } else if (instr == 0x4e73) {
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "rte");
         return;
-    } else if (i == 0x4e75) {
+    } else if (instr == 0x4e75) {
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "rts");
         return;
-    } else if (i == 0x4e76) {
+    } else if (instr == 0x4e76) {
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "trapv");
         return;
-    } else if (i == 0x4e77) {
+    } else if (instr == 0x4e77) {
         node.size = kInstructionSizeStepBytes;
         snprintf(node.mnemonic, kMnemonicBufferSize, "rtr");
         return;
-    } else if ((i & 0xffc0) == 0x4e80) {
-        return disasm_jsr(node, i, c, s);
-    } else if ((i & 0xffc0) == 0x4ec0) {
-        return disasm_jmp(node, i, c, s);
+    } else if ((instr & 0xffc0) == 0x4e80) {
+        return disasm_jsr(node, instr, code, s);
+    } else if ((instr & 0xffc0) == 0x4ec0) {
+        return disasm_jmp(node, instr, code, s);
     }
-    return disasm_verbatim(node, i, c, s);
+    return disasm_verbatim(node, instr, code, s);
 }
 
 enum class OpSize {
