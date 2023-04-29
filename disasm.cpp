@@ -728,7 +728,7 @@ static void disasm_dbcc(DisasmNode& node, uint16_t instr, const DataBuffer &code
     const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt_raw);
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
-    const int16_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
+    const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
     const char * const sign = dispmt >= 0 ? "+" : "";
     // FIXME support s.rel_marks option for this instruction

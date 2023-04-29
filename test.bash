@@ -32,7 +32,7 @@ run_test_simple() {
   echo -ne "Test \"${test_name}\"... "
   echo -ne "${data}" >${file_orig_bin}
   ${DISASM} -t ${TRACE_FILE} -o ${file_asm} ${file_orig_bin}
-  ${AS} -o ${file_as_o} ${file_asm}
+  ${AS} -m68000 -o ${file_as_o} ${file_asm}
   ${LD} -o ${file_as_elf} ${file_as_o}
   ${OBJCOPY} ${file_as_elf} -O binary ${file_as_bin}
   if ! cmp ${file_orig_bin} ${file_as_bin} >/dev/null 2>&1; then
@@ -156,6 +156,11 @@ run_test_iterative "seq Xn" "\x57" 0xc0 8 1
 #
 run_test_simple "dbt negative displacement" "\x50\xcf\xff\xfc"
 run_test_simple "dbt positive displacement" "\x50\xcf\x01\x08"
+
+# 50c9 7ffe
+#
+# From random tests
+run_test_simple "dbt %d1,.+32768" "\x50\xc9\x7f\xfe"
 
 # 60xx
 #
