@@ -64,7 +64,21 @@ run_test_iterative() {
   done
 }
 
-# TODO add some more tests for addq, i.e. for briefext, (xxx).W and (xxx).L
+# 5x38 / 5x78 / 5xb8 (xxx).W
+#
+run_test_simple "addqb #8,offset:w" "\x50\x38\x00\x73"
+run_test_simple "addql #4,offset:w" "\x58\xb8\x80\x14"
+
+# 5x39 / 5x79 / 5xb9 (xxx).L
+#
+run_test_simple "addqw #5,offset:l" "\x5a\x79\x18\xfc\x00\x00"
+run_test_simple "addql #1,offset:l" "\x52\xb9\xf1\x00\x00\x01"
+
+# 5x30..5x37 / 5x70..5x77 / 5xb0..5xb7, (d16, An, Xi), Brief Extension Word
+#
+run_test_simple "addqb #8,a7(positive,d0:w)" "\x50\x37\x00\x73"
+run_test_simple "addqw #5,a2(negative,d1:l)" "\x5a\x72\x18\xfc"
+run_test_simple "addql #1,a3(negative,a3:w)" "\x52\xb3\xb0\x81"
 
 # 5x28..5x2f / 5x68..5x6f / 5xa8..5xaf, (d16, An), Displacement Word
 #

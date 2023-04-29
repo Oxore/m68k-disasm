@@ -6,6 +6,235 @@
 #include <cstdio>
 #include <cstdlib>
 
+enum class AddrMode: uint8_t {
+    kInvalid = 0,
+    kDn,
+    kAn,
+    kAnAddr,
+    kAnAddrIncr,
+    kAnAddrDecr,
+    kD16AnAddr,
+    kD8AnXiAddr,
+    kWord,
+    kLong,
+    kD16PCAddr,
+    kD8PCXiAddr,
+    kImmediate,
+};
+
+struct AddrModeArg {
+    AddrMode mode{};
+    uint8_t m{};
+    uint8_t xn{}; /// Xn register number: 0..7
+    char r{}; /// Xi register type specifier letter: either 'd' or 'a'
+    uint8_t xi{}; /// Xi register number: 0..7
+    char s{}; /// Size spec letter of Xi: either 'w' or 'l'
+    int32_t value{}; /// Word, Long or Immediate
+    /// Size of the extension: 0, 2 or 4 bytes
+    constexpr size_t Size() const
+    {
+        switch (mode) {
+        case AddrMode::kInvalid:
+        case AddrMode::kDn:
+        case AddrMode::kAn:
+        case AddrMode::kAnAddr:
+        case AddrMode::kAnAddrIncr:
+        case AddrMode::kAnAddrDecr:
+            return 0;
+        case AddrMode::kD16AnAddr:
+        case AddrMode::kD8AnXiAddr:
+        case AddrMode::kWord:
+            return 2;
+        case AddrMode::kLong:
+            return 4;
+        case AddrMode::kD16PCAddr:
+        case AddrMode::kD8PCXiAddr:
+            return 2;
+        case AddrMode::kImmediate:
+            // TODO I don't know, need to figure out
+            return 2;
+        }
+        return 0;
+    }
+    static constexpr AddrModeArg Dn(uint8_t m, uint8_t xn)
+    {
+        return AddrModeArg{AddrMode::kDn, m, xn};
+    }
+    static constexpr AddrModeArg An(uint8_t m, uint8_t xn)
+    {
+        return AddrModeArg{AddrMode::kAn, m, xn};
+    }
+    static constexpr AddrModeArg AnAddr(uint8_t m, uint8_t xn)
+    {
+        return AddrModeArg{AddrMode::kAnAddr, m, xn};
+    }
+    static constexpr AddrModeArg AnAddrIncr(uint8_t m, uint8_t xn)
+    {
+        return AddrModeArg{AddrMode::kAnAddrIncr, m, xn};
+    }
+    static constexpr AddrModeArg AnAddrDecr(uint8_t m, uint8_t xn)
+    {
+        return AddrModeArg{AddrMode::kAnAddrDecr, m, xn};
+    }
+    static constexpr AddrModeArg D16AnAddr(uint8_t m, uint8_t xn, int16_t d16)
+    {
+        return AddrModeArg{AddrMode::kD16AnAddr, m, xn, 0, 0, 0, d16};
+    }
+    static constexpr AddrModeArg D8AnXiAddr(
+            uint8_t m, uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
+    {
+        return AddrModeArg{AddrMode::kD8AnXiAddr, m, xn, r, xi, s, d8};
+    }
+    static constexpr AddrModeArg Word(uint8_t m, uint8_t xn, int16_t w)
+    {
+        return AddrModeArg{AddrMode::kWord, m, xn, 0, 0, 0, w};
+    }
+    static constexpr AddrModeArg Long(uint8_t m, uint8_t xn, int32_t l)
+    {
+        return AddrModeArg{AddrMode::kLong, m, xn, 0, 0, 0, l};
+    }
+    static constexpr AddrModeArg D16PCAddr(uint8_t m, uint8_t xn, int16_t d16)
+    {
+        return AddrModeArg{AddrMode::kD16PCAddr, m, xn, 0, 0, 0, d16};
+    }
+    static constexpr AddrModeArg D8PCXiAddr(
+            uint8_t m, uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
+    {
+        return AddrModeArg{AddrMode::kD8PCXiAddr, m, xn, r, xi, s, d8};
+    }
+    static constexpr AddrModeArg Immediate(uint8_t m, uint8_t xn, int32_t value)
+    {
+        return AddrModeArg{AddrMode::kImmediate, m, xn, 0, 0, 0, value};
+    }
+    static constexpr AddrModeArg Fetch(
+            const uint32_t offset, const DataBuffer &code, int16_t instr)
+    {
+        const int addrmode = instr & 0x3f;
+        const int m = (addrmode >> 3) & 0x7;
+        const int xn = addrmode & 0x7;
+        return Fetch(offset, code, m, xn);
+    }
+    static constexpr AddrModeArg Fetch(
+            const uint32_t offset, const DataBuffer &code, const int m, const int xn);
+    int SNPrint(char *const buf, const size_t bufsz) const
+    {
+        switch (mode) {
+        case AddrMode::kInvalid:
+            assert(false);
+            break;
+        case AddrMode::kDn:
+            return snprintf(buf, bufsz, "%%d%d", xn);
+        case AddrMode::kAn:
+            return snprintf(buf, bufsz, "%%a%d", xn);
+        case AddrMode::kAnAddr:
+            return snprintf(buf, bufsz, "%%a%d@", xn);
+        case AddrMode::kAnAddrIncr:
+            return snprintf(buf, bufsz, "%%a%d@+", xn);
+        case AddrMode::kAnAddrDecr:
+            return snprintf(buf, bufsz, "%%a%d@-", xn);
+        case AddrMode::kD16AnAddr:
+            return snprintf(buf, bufsz, "%%a%d@(%d:w)", xn, value);
+        case AddrMode::kD8AnXiAddr:
+            return snprintf(buf, bufsz, "%%a%d@(%d,%%%c%d:%c)", xn, value, r, xi, s);
+        case AddrMode::kWord:
+            return snprintf(buf, bufsz, "0x%x:w", value);
+        case AddrMode::kLong:
+            return snprintf(buf, bufsz, "0x%x:l", value);
+        case AddrMode::kD16PCAddr:
+            return snprintf(buf, bufsz, "%%pc@(%d:w)", value);
+        case AddrMode::kD8PCXiAddr:
+            return snprintf(buf, bufsz, "%%pc@(%d,%%%c%d:%c)", value, r, xi, s);
+        case AddrMode::kImmediate:
+            return snprintf(buf, bufsz, "#%d", value);
+        }
+        assert(false);
+        return -1;
+    };
+};
+
+constexpr AddrModeArg AddrModeArg::Fetch(
+        const uint32_t offset, const DataBuffer &code, const int m, const int xn)
+{
+    switch (m) {
+    case 0: // Dn
+        return AddrModeArg::Dn(m, xn);
+    case 1: // An
+        return AddrModeArg::An(m, xn);
+    case 2: // (An)
+        return AddrModeArg::AnAddr(m, xn);
+    case 3: // (An)+
+        return AddrModeArg::AnAddrIncr(m, xn);
+    case 4: // -(An)
+        return AddrModeArg::AnAddrDecr(m, xn);
+    case 5: // (d16, An), Additional Word
+        if (offset < code.occupied_size) {
+            const int16_t d16 = GetI16BE(code.buffer + offset);
+            return AddrModeArg::D16AnAddr(m, xn, d16);
+        }
+        break;
+    case 6: // (d8, An, Xi), Brief Extension Word
+        if (offset < code.occupied_size) {
+            const uint16_t briefext = GetU16BE(code.buffer + offset);
+            if (briefext & 0x0700) {
+                // briefext must have zeros on 8, 9 an 10-th bits,
+                // i.e. xxxx_x000_xxxx_xxxx
+                break;
+            }
+            const char r = ((briefext >> 15) & 1) ? 'a' : 'd';
+            const uint8_t xi = (briefext >> 12) & 7;
+            const char s = ((briefext >> 11) & 1) ? 'l' : 'w';
+            const int8_t d8 = briefext & 0xff;
+            return AddrModeArg::D8AnXiAddr(m, xn, r, xi, s, d8);
+        }
+        break;
+    case 7:
+        switch (xn) {
+        case 0: // (xxx).W, Additional Word
+            if (offset < code.occupied_size) {
+                const int32_t w = GetI16BE(code.buffer + offset);
+                return AddrModeArg::Word(m, xn, w);
+            }
+            break;
+        case 1: // (xxx).L, Additional Long
+            if (offset < code.occupied_size) {
+                const int32_t l = GetI32BE(code.buffer + offset);
+                return AddrModeArg::Long(m, xn, l);
+            }
+            break;
+        case 2: // (d16, PC), Additional Word
+            if (offset < code.occupied_size) {
+                const int16_t d16 = GetI16BE(code.buffer + offset);
+                return AddrModeArg::D16PCAddr(m, xn, d16);
+            }
+            break;
+        case 3: // (d8, PC, Xi), Brief Extension Word
+            if (offset < code.occupied_size) {
+                const uint16_t briefext = GetU16BE(code.buffer + offset);
+                if (briefext & 0x0700) {
+                    // briefext must have zeros on 8, 9 an 10-th bits,
+                    // i.e. xxxx_x000_xxxx_xxxx
+                    return AddrModeArg{};
+                }
+                const char r = ((briefext >> 15) & 1) ? 'a' : 'd';
+                const uint8_t xi = (briefext >> 12) & 7;
+                const char s = ((briefext >> 11) & 1) ? 'l' : 'w';
+                const int8_t d8 = briefext & 0xff;
+                return AddrModeArg::D8PCXiAddr(m, xn, r, xi, s, d8);
+            }
+            break;
+        case 4: // #imm
+            // TODO
+            return AddrModeArg{};
+        case 5: // Does not exist
+        case 6: // Does not exist
+        case 7: // Does not exist
+            break;
+        }
+        break;
+    }
+    return AddrModeArg{};
+}
+
 static void disasm_verbatim(
         DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
 {
@@ -22,135 +251,65 @@ enum class JsrJmp {
 static void disasm_jsr_jmp(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, JsrJmp jsrjmp)
 {
-    const char *mnemonic = (jsrjmp == JsrJmp::kJsr) ? "jsr" : "jmp";
-    node.is_call = (jsrjmp == JsrJmp::kJsr);
-    const int addrmode = instr & 0x3f;
-    const int m = (addrmode >> 3) & 0x7;
-    const int xn = addrmode & 0x7;
-    switch (m) {
-    case 0: // 4e80..4e87 / 4ec0..4ec7
-    case 1: // 4e88..4e8f / 4ec8..4ecf
-        break;
-    case 2: // 4e90..4e97 / 4ed0..4ed7
+    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr);
+    switch (a.mode) {
+    case AddrMode::kInvalid:
+    case AddrMode::kDn: // 4e80..4e87 / 4ec0..4ec7
+    case AddrMode::kAn: // 4e88..4e8f / 4ec8..4ecf
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr: // 4e90..4e97 / 4ed0..4ed7
         // NOTE: dynamic jump, branch_addr may possibly be obtained during the
         // trace
-        node.size = kInstructionSizeStepBytes;
-        snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-        snprintf(node.arguments, kArgsBufferSize, "%%a%d@", xn);
-        return;
-    case 3: // 4e98..4e9f / 4ed8..4edf
-    case 4: // 4ea0..4ea7 / 4ee0..4ee7
         break;
-    case 5: // 4ea8..4eaf / 4ee8..4eef, Displacement
-        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
-            // NOTE: dynamic jump, branch_addr may possibly be obtained during
-            // the trace
-            node.size = kInstructionSizeStepBytes * 2;
-            const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-            snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-            snprintf(node.arguments, kArgsBufferSize, "%%a%d@(%d:w)", xn, dispmt);
-            return;
+    case AddrMode::kAnAddrIncr: // 4e98..4e9f / 4ed8..4edf
+    case AddrMode::kAnAddrDecr: // 4ea0..4ea7 / 4ee0..4ee7
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kD16AnAddr: // 4ea8..4eaf / 4ee8..4eef
+        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // trace
+        break;
+    case AddrMode::kD8AnXiAddr: // 4eb0..4eb7 / 4ef0..4ef7
+        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // trace
+        break;
+    case AddrMode::kWord: // 4eb8 / 4ef8
+        {
+            // FIXME support s.abs_marks option for this instruction
+            const uint32_t branch_addr = static_cast<uint32_t>(a.value);
+            node.branch_addr = branch_addr;
+            node.has_branch_addr = true;
         }
         break;
-    case 6: // 4eb0..4eb7 / 4ef0..4ef7, Brief Extension Word
-        if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
-            // NOTE: dynamic jump, branch_addr may possibly be obtained during
-            // the trace
-            node.size = kInstructionSizeStepBytes * 2;
-            const uint16_t briefext = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-            if (briefext & 0x0700) {
-                // briefext must have zeros on 8, 9 an 10-th bits,
-                // i.e. xxxx_x000_xxxx_xxxx
-                break;
-            }
-            const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
-            const int xn2 = (briefext >> 12) & 7;
-            const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
-            const int8_t dispmt = briefext & 0xff;
-            snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-            snprintf(node.arguments, kArgsBufferSize,
-                    "%%a%d@(%d,%%%c%d:%c)", xn, dispmt, reg, xn2, size_spec);
-            return;
+    case AddrMode::kLong: // 4eb9 / 4ef9
+        {
+            // FIXME support s.abs_marks option for this instruction
+            const uint32_t branch_addr = static_cast<uint32_t>(a.value);
+            node.branch_addr = branch_addr;
+            node.has_branch_addr = true;
         }
         break;
-    case 7: // 4eb8..4ebf / 4ef8..4eff, some are with Brief Extension Word
-        switch (xn) {
-        case 0: // 4eb8 / 4ef8 (xxx).W
-            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
-                node.size = kInstructionSizeStepBytes * 2;
-                // This shit is real: it is sign extend value
-                const int32_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-                // So jumping to negative value will land PC on something like
-                // 0xffff8a0c, effectively making jump possible only to lowest
-                // 32K range 0..0x7fff and highest 32K range
-                // 0xffff8000...0xffffffff
-                const uint32_t branch_addr = static_cast<uint32_t>(dispmt);
-                node.branch_addr = branch_addr;
-                node.has_branch_addr = true;
-                snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-                // FIXME support s.abs_marks option for this instruction
-                snprintf(node.arguments, kArgsBufferSize, "0x%x:w", dispmt);
-                return;
-            }
-            break;
-        case 1: // 4eb9 / 4ef9 (xxx).L
-            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
-                node.size = kInstructionSizeStepBytes * 3;
-                const int32_t dispmt = GetI32BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-                const uint32_t branch_addr = static_cast<uint32_t>(dispmt);
-                node.branch_addr = branch_addr;
-                node.has_branch_addr = true;
-                snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-                // FIXME support s.abs_marks option for this instruction
-                snprintf(node.arguments, kArgsBufferSize, "0x%x:l", dispmt);
-                return;
-            }
-            break;
-        case 2: // 4eba / 4efa, Displacement
-            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
-                const int16_t dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-                // Add 2 to current PC, as usual
-                const uint32_t branch_addr = static_cast<uint32_t>(
-                        node.offset + dispmt + kInstructionSizeStepBytes);
-                node.branch_addr = branch_addr;
-                node.has_branch_addr = true;
-                node.size = kInstructionSizeStepBytes * 2;
-                snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-                // FIXME support s.abs_marks option for this instruction
-                snprintf(node.arguments, kArgsBufferSize, "%%pc@(%d:w)", dispmt);
-                return;
-            }
-            break;
-        case 3: // 4ebb / 4efb
-            if (node.offset + kInstructionSizeStepBytes < code.occupied_size) {
-                // NOTE: dynamic jump, branch_addr may possibly be obtained
-                // during the trace
-                node.size = kInstructionSizeStepBytes * 2;
-                const uint16_t briefext = GetU16BE(
-                        code.buffer + node.offset + kInstructionSizeStepBytes);
-                if (briefext & 0x0700) {
-                    // briefext must have zeros on 8, 9 an 10-th bits,
-                    // i.e. xxxx_x000_xxxx_xxxx
-                    break;
-                }
-                const char reg = ((briefext >> 15) & 1) ? 'a' : 'd';
-                const int xn2 = (briefext >> 12) & 7;
-                const char size_spec = ((briefext >> 11) & 1) ? 'l' : 'w';
-                const int8_t dispmt = briefext & 0xff;
-                snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-                snprintf(node.arguments, kArgsBufferSize,
-                        "%%pc@(%d,%%%c%d:%c)", dispmt, reg, xn2, size_spec);
-                return;
-            }
-            break;
-        case 4: // 4ebc / 4efb
-        case 5: // 4ebd / 4efd
-        case 6: // 4ebe / 4efe
-            break;
+    case AddrMode::kD16PCAddr: // 4eba / 4efa
+        {
+            // FIXME support s.abs_marks option for this instruction
+            const uint32_t branch_addr = static_cast<uint32_t>(a.value) + kInstructionSizeStepBytes;
+            node.branch_addr = branch_addr;
+            node.has_branch_addr = true;
         }
         break;
+    case AddrMode::kD8PCXiAddr: // 4ebb / 4efb
+        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // trace
+        break;
+    case AddrMode::kImmediate: // 4ebc / 4efc
+        return disasm_verbatim(node, instr, code, s);
     }
-    return disasm_verbatim(node, instr, code, s);
+    node.is_call = (jsrjmp == JsrJmp::kJsr);
+    node.size = kInstructionSizeStepBytes + a.Size();
+    const char *mnemonic = (jsrjmp == JsrJmp::kJsr) ? "jsr" : "jmp";
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
+    const int ret = a.SNPrint(node.arguments, kArgsBufferSize);
+    assert(ret > 0);
+    (void) ret;
 }
 
 static void disasm_jsr(
