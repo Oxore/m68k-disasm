@@ -5,6 +5,24 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+
+enum class JType {
+    kJsr,
+    kJmp,
+};
+
+enum class MoveDirection: bool {
+    kRegisterToMemory = 0,
+    kMemoryToRegister = 1,
+};
+
+enum class OpSize: int {
+    kByte = 0,
+    kWord = 1,
+    kLong = 2,
+    kInvalid = 3,
+};
 
 enum class AddrMode: uint8_t {
     kInvalid = 0,
@@ -149,7 +167,7 @@ struct AddrModeArg {
         }
         assert(false);
         return -1;
-    };
+    }
 };
 
 constexpr AddrModeArg AddrModeArg::Fetch(
@@ -235,6 +253,49 @@ constexpr AddrModeArg AddrModeArg::Fetch(
     return AddrModeArg{};
 }
 
+static char suffix_from_opsize(OpSize opsize)
+{
+    switch (opsize) {
+    case OpSize::kByte: return 'b';
+    case OpSize::kWord: return 'w';
+    case OpSize::kLong: return 'l';
+    case OpSize::kInvalid: return 'l';
+    }
+    return 'l';
+}
+
+size_t snprint_reg_mask(
+        char *const buf, const size_t bufsz, const uint32_t regmask_arg, const bool predecrement)
+{
+    const uint32_t regmask = regmask_arg & 0xffff;
+    size_t written = 0;
+    bool first_printed = 0;
+    size_t span = 0;
+    // 17-th bit used to close the span with 0 value unconditionaly
+    for (int i = 0; i < 17; i++) {
+        const uint32_t mask = 1 << (predecrement ? (15 - i) : i);
+        const bool hit = regmask & mask;
+        const bool span_open = hit && span == 0;
+        const bool span_closed = !hit && span > 1;
+        const int printable_i = i - (span_closed ? 1 : 0);
+        const int id = printable_i % 8;
+        const char regtype = (printable_i >= 8) ? 'a' : 'd';
+        if (span_open || span_closed) {
+            const char *const delimiter = span_open ? (first_printed ? "/" : "") : "-";
+            const size_t remaining = bufsz - written;
+            const int ret = snprintf(buf + written, remaining, "%s%%%c%d", delimiter, regtype, id);
+            assert(ret > 0);
+            assert(static_cast<unsigned>(ret) >= strlen("%d0"));
+            assert(static_cast<unsigned>(ret) <= strlen("-%d0"));
+            written += Min(remaining, ret);
+            first_printed = true;
+        }
+        span = hit ? span + 1 : 0;
+    }
+    assert(written < bufsz); // Output must not be truncated
+    return written;
+}
+
 static void disasm_verbatim(
         DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
 {
@@ -243,13 +304,8 @@ static void disasm_verbatim(
     snprintf(node.arguments, kArgsBufferSize, "0x%04x", instr);
 }
 
-enum class JsrJmp {
-    kJsr,
-    kJmp,
-};
-
 static void disasm_jsr_jmp(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, JsrJmp jsrjmp)
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, JType jsrjmp)
 {
     const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr);
     switch (a.mode) {
@@ -303,25 +359,87 @@ static void disasm_jsr_jmp(
     case AddrMode::kImmediate: // 4ebc / 4efc
         return disasm_verbatim(node, instr, code, s);
     }
-    node.is_call = (jsrjmp == JsrJmp::kJsr);
+    node.is_call = (jsrjmp == JType::kJsr);
     node.size = kInstructionSizeStepBytes + a.Size();
-    const char *mnemonic = (jsrjmp == JsrJmp::kJsr) ? "jsr" : "jmp";
+    const char *mnemonic = (jsrjmp == JType::kJsr) ? "jsr" : "jmp";
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
     const int ret = a.SNPrint(node.arguments, kArgsBufferSize);
     assert(ret > 0);
     (void) ret;
 }
 
-static void disasm_jsr(
+static void disasm_movem(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    return disasm_jsr_jmp(node, instr, code, s, JsrJmp::kJsr);
+    const auto dir = static_cast<MoveDirection>((instr >> 10) & 1);
+    // Although it would be much mode logical to fetch register mask first,
+    // since it goes right next after the instruction, but fetching addressing
+    // mode register first provides us the ultimate boundary check with early
+    // return, so we don't have to check for node.occupied_size when fetching
+    // regmask after this.
+    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes * 2, code, instr);
+    switch (a.mode) {
+    case AddrMode::kInvalid:
+    case AddrMode::kDn: // 4880..4887 / 4c80..4c87 / 48c0..48c7 / 4cc0..4cc7
+    case AddrMode::kAn: // 4888..488f / 4c88..4c8f / 48c8..48cf / 4cc8..4ccf
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr: // 4890..4897 / 4c90..4c97 / 48d0..48d7 / 4cd0..4cd7
+        break;
+    case AddrMode::kAnAddrIncr: // 4898..489f / 4c89..4c9f / 48d8..48df / 4cd8..4cdf
+        if (dir == MoveDirection::kRegisterToMemory) {
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kAnAddrDecr: // 48a0..48a7 / 4ca0..4ca7 / 48e0..48e7 / 4ce0..4ce7
+        if (dir == MoveDirection::kMemoryToRegister) {
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kD16AnAddr: // 48a8..48af / 4c8a..4caf / 48e8..48ef / 4ce8..4cef
+    case AddrMode::kD8AnXiAddr: // 48b0..48b7 / 4cb0..4cb7 / 48f0..48f7 / 4cf0..4cf7
+    case AddrMode::kWord: // 48b8 / 4cb8 / 48f8 / 4cf8
+    case AddrMode::kLong: // 48b9 / 4cb9 / 48f9 / 4cf9
+        break;
+    case AddrMode::kD16PCAddr: // 48ba / 4cba / 48fa / 4cfa
+    case AddrMode::kD8PCXiAddr: // 48bb / 4cbb / 48fb / 4cfb
+        if (dir == MoveDirection::kRegisterToMemory) {
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kImmediate: // 4ebc / 4efc
+        return disasm_verbatim(node, instr, code, s);
+    }
+    // Make sure that regmask is fetched after AddrModeArg has done boundary
+    // check.
+    const unsigned regmask = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+    if (regmask == 0) {
+        // This is just not representable: at least one register must be specified
+        return disasm_verbatim(node, instr, code, s);
+    }
+    node.size = kInstructionSizeStepBytes * 2 + a.Size();
+    const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "movem%c", suffix_from_opsize(opsize));
+    char regmask_str[48]{};
+    char addrmodearg_str[32]{};
+    snprint_reg_mask(regmask_str, sizeof(regmask_str), regmask, a.mode == AddrMode::kAnAddrDecr);
+    a.SNPrint(addrmodearg_str, sizeof(addrmodearg_str));
+    if (dir == MoveDirection::kMemoryToRegister) {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addrmodearg_str, regmask_str);
+    } else {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", regmask_str, addrmodearg_str);
+    }
 }
 
-static void disasm_jmp(
+static void disasm_lea(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    return disasm_jsr_jmp(node, instr, code, s, JsrJmp::kJmp);
+        return disasm_verbatim(node, instr, code, s);
+}
+
+static void disasm_chk(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+        return disasm_verbatim(node, instr, code, s);
 }
 
 enum class Condition {
@@ -405,18 +523,9 @@ static void chunk_mf000_v0000(DisasmNode& n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_v1000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void disasm_move(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
-    return disasm_verbatim(n, i, c, s);
-}
-
-static void chunk_mf000_v2000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
-    return disasm_verbatim(n, i, c, s);
-}
-
-static void chunk_mf000_v3000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
+    // TODO
     return disasm_verbatim(n, i, c, s);
 }
 
@@ -456,29 +565,17 @@ static void chunk_mf000_v4000(
         snprintf(node.mnemonic, kMnemonicBufferSize, "rtr");
         return;
     } else if ((instr & 0xffc0) == 0x4e80) {
-        return disasm_jsr(node, instr, code, s);
+        return disasm_jsr_jmp(node, instr, code, s, JType::kJsr);
     } else if ((instr & 0xffc0) == 0x4ec0) {
-        return disasm_jmp(node, instr, code, s);
+        return disasm_jsr_jmp(node, instr, code, s, JType::kJmp);
+    } else if ((instr & 0xfb80) == 0x4880) {
+        return disasm_movem(node, instr, code, s);
+    } else if ((instr & 0xf1c) == 0x41c0) {
+        return disasm_lea(node, instr, code, s);
+    } else if ((instr & 0xf1c) == 0x4180) {
+        return disasm_chk(node, instr, code, s);
     }
     return disasm_verbatim(node, instr, code, s);
-}
-
-enum class OpSize {
-    kByte = 0,
-    kWord = 1,
-    kLong = 2,
-    kInvalid = 3,
-};
-
-static char suffix_from_opsize(OpSize opsize)
-{
-    switch (opsize) {
-    case OpSize::kByte: return 'b';
-    case OpSize::kWord: return 'w';
-    case OpSize::kLong: return 'l';
-    case OpSize::kInvalid: return 'l';
-    }
-    return 'l';
 }
 
 static void disasm_addq_subq(
@@ -517,9 +614,9 @@ static void disasm_addq_subq(
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
     const unsigned imm = ((uint8_t((instr >> 9) & 7) - 1) & 7) + 1;
     const int ret = snprintf(node.arguments, kArgsBufferSize, "#%u,", imm);
-    assert(ret == strlen("#8,"));
-    assert(ret >= kArgsBufferSize);
-    a.SNPrint(node.arguments + ret, kArgsBufferSize);
+    assert(ret > 0);
+    assert(static_cast<unsigned>(ret) == strlen("#8,"));
+    a.SNPrint(node.arguments + ret, kArgsBufferSize - ret);
 }
 
 static inline const char *dbcc_mnemonic_by_condition(Condition condition)
@@ -674,22 +771,38 @@ static void chunk_mf000_ve000(DisasmNode& n, uint16_t i, const DataBuffer &c, co
 static void m68k_disasm(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     switch ((i & 0xf000) >> 12) {
-    case 0x0: return chunk_mf000_v0000(n, i, c, s);
-    case 0x1: return chunk_mf000_v1000(n, i, c, s);
-    case 0x2: return chunk_mf000_v2000(n, i, c, s);
-    case 0x3: return chunk_mf000_v3000(n, i, c, s);
-    case 0x4: return chunk_mf000_v4000(n, i, c, s);
-    case 0x5: return chunk_mf000_v5000(n, i, c, s);
-    case 0x6: return disasm_bra_bsr_bcc(n, i, c, s);
-    case 0x7: return disasm_moveq(n, i, c, s);
-    case 0x8: return chunk_mf000_v8000(n, i, c, s);
-    case 0x9: return chunk_mf000_v9000(n, i, c, s);
-    case 0xa: return disasm_verbatim(n, i, c, s);
-    case 0xb: return chunk_mf000_vb000(n, i, c, s);
-    case 0xc: return chunk_mf000_vc000(n, i, c, s);
-    case 0xd: return chunk_mf000_vd000(n, i, c, s);
-    case 0xe: return chunk_mf000_ve000(n, i, c, s);
-    case 0xf: return disasm_verbatim(n, i, c, s);
+    case 0x0:
+        return chunk_mf000_v0000(n, i, c, s);
+    case 0x1:
+    case 0x2:
+    case 0x3:
+        return disasm_move(n, i, c, s);
+    case 0x4:
+        return chunk_mf000_v4000(n, i, c, s);
+    case 0x5:
+        return chunk_mf000_v5000(n, i, c, s);
+    case 0x6:
+        return disasm_bra_bsr_bcc(n, i, c, s);
+    case 0x7:
+        return disasm_moveq(n, i, c, s);
+    case 0x8:
+        return chunk_mf000_v8000(n, i, c, s);
+    case 0x9:
+        return chunk_mf000_v9000(n, i, c, s);
+    case 0xa:
+        // Does not exist
+        return disasm_verbatim(n, i, c, s);
+    case 0xb:
+        return chunk_mf000_vb000(n, i, c, s);
+    case 0xc:
+        return chunk_mf000_vc000(n, i, c, s);
+    case 0xd:
+        return chunk_mf000_vd000(n, i, c, s);
+    case 0xe:
+        return chunk_mf000_ve000(n, i, c, s);
+    case 0xf:
+        // Does not exist
+        return disasm_verbatim(n, i, c, s);
     }
     assert(false);
     return disasm_verbatim(n, i, c, s);

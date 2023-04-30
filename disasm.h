@@ -14,7 +14,7 @@ enum class TracedNodeType {
 constexpr size_t kRefsCountPerBuffer = 10;
 
 constexpr size_t kMnemonicBufferSize = 8;
-constexpr size_t kArgsBufferSize = 64;
+constexpr size_t kArgsBufferSize = 80;
 constexpr size_t kMarkBufferSize = 64;
 
 enum class ReferenceType {

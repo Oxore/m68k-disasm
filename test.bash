@@ -64,6 +64,26 @@ run_test_iterative() {
   done
 }
 
+# 4890 xxx
+#
+run_test_simple "movemw single register to (An)" "\x48\x90\x00\x01"
+run_test_simple "movemw d0-d1,a0-a1 to (An)" "\x48\x90\x03\x03"
+run_test_simple "moveml 6 spans to (An)" "\x48\xd0\xb6\xdb"
+run_test_simple "movemw 8 non-neighboring regs to (An)" "\x48\x90\x55\x55"
+run_test_simple "moveml other 8 non-neighboring regs to (An)" "\x48\xd0\xaa\xaa"
+run_test_simple "moveml all registers to (An)" "\x48\xd0\xff\xff"
+run_test_simple "movemw all registers to -(An)" "\x48\xa0\xff\xff"
+run_test_simple "moveml all registers to (d16,An)" "\x48\xe8\xff\xff\x30\x1d"
+run_test_simple "movemw all registers to (d8,An,Xi)" "\x48\xb7\xff\xff\x48\x0a"
+run_test_simple "moveml all registers to (xxx).W" "\x48\xf8\xff\xff\x80\x10"
+run_test_simple "movemw all registers to (xxx).L" "\x48\xb9\xff\xff\x00\x00\x7f\xf0"
+run_test_simple "movemw (An) to all registers " "\x4c\x90\xff\xff"
+run_test_simple "moveml (An)+ to all registers" "\x4c\xd8\xff\xff"
+run_test_simple "movemw (d16,An) to all registers" "\x4c\xa8\xff\xff\x30\x1d"
+run_test_simple "moveml (d8,An,Xi) to all registers" "\x4c\xf7\xff\xff\x48\x0a"
+run_test_simple "movemw (xxx).W to all registers" "\x4c\xb8\xff\xff\x80\x10"
+run_test_simple "moveml (xxx).L to all registers" "\x4c\xf9\xff\xff\x00\x00\x7f\xf0"
+
 # 5x38 / 5x78 / 5xb8 (xxx).W
 #
 run_test_simple "addqb #8,offset:w" "\x50\x38\x00\x73"
