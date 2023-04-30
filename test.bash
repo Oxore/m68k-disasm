@@ -9,7 +9,6 @@ OBJCOPY=m68k-none-elf-objcopy
 LD="m68k-none-elf-ld -Ttest.ld"
 DISASM="./cmake-build/m68k-disasm -fabs-marks -frel-marks -fmarks"
 TEST_DIR=/tmp/m68k-disasm-tests
-TRACE_FILE=${TEST_DIR}/trace.txt
 
 set -e
 CRED="\033[31m"
@@ -18,7 +17,6 @@ CRST="\033[39m"
 
 rm -rf ${TEST_DIR}
 mkdir -p ${TEST_DIR}
-echo "0" >${TRACE_FILE}
 
 run_test_simple() {
   local test_name=$1
@@ -31,7 +29,7 @@ run_test_simple() {
   local file_as_bin=${TEST_DIR}/${test_name_sanitized}.as.bin
   echo -ne "Test \"${test_name}\"... "
   echo -ne "${data}" >${file_orig_bin}
-  ${DISASM} -t ${TRACE_FILE} -o ${file_asm} ${file_orig_bin}
+  ${DISASM} -o ${file_asm} ${file_orig_bin}
   ${AS} -m68000 -o ${file_as_o} ${file_asm}
   ${LD} -o ${file_as_elf} ${file_as_o}
   ${OBJCOPY} ${file_as_elf} -O binary ${file_as_bin}
@@ -63,6 +61,54 @@ run_test_iterative() {
     run_test_simple "${test_name}:${value}" "${prefix}\x${value}${suffix}"
   done
 }
+
+# From random tests
+# 
+run_test_simple "movel %pc@(-16,%a0:l),%a3@+ with nop" "\x26\xfb\x88\xf0\x4e\x71"
+
+# 1xxx [xxxx [xxxx]]
+#
+run_test_simple "moveb Dn to Dn" "\x10\x01"
+run_test_simple "moveb (An) to Dn" "\x10\x11"
+run_test_simple "moveb (An)+ to Dn" "\x10\x19"
+run_test_simple "moveb -(An) to Dn" "\x10\x21"
+run_test_simple "moveb (d16,An) to Dn" "\x10\x29\xfc\xeb"
+run_test_simple "moveb (d8,An,Xi) to Dn" "\x10\x31\x98\x70"
+run_test_simple "moveb (xxx).W to Dn" "\x10\x38\x98\x70"
+run_test_simple "moveb (xxx).L to Dn" "\x10\x39\x30\x30\x30\x70"
+run_test_simple "moveb (d16,PC) to Dn" "\x10\x3a\xfc\xeb"
+run_test_simple "moveb (d8,PC,Xi) to Dn" "\x10\x3b\xa8\x70"
+run_test_simple "moveb #imm to Dn" "\x10\x3c\xff\xff"
+
+# 3xxx [xxxx [xxxx]]
+#
+run_test_simple "movew Dn to Dn" "\x3e\x02"
+run_test_simple "movew An to Dn" "\x3e\x0a"
+run_test_simple "movew (An) to Dn" "\x3e\x12"
+run_test_simple "movew (An)+ to Dn" "\x30\x1a"
+run_test_simple "movew -(An) to Dn" "\x30\x22"
+run_test_simple "movew (d16,An) to Dn" "\x30\x2a\x3f\xff"
+run_test_simple "movew (d8,An,Xi) to Dn" "\x30\x32\x90\x80"
+run_test_simple "movew (xxx).W to Dn" "\x30\x38\x90\x80"
+run_test_simple "movew (xxx).L to Dn" "\x30\x39\xaa\xaa\xaa\xaa"
+run_test_simple "movew (d16,PC) to Dn" "\x30\x3a\x3f\xff"
+run_test_simple "movew (d8,PC,Xi) to Dn" "\x30\x3b\xa0\x80"
+run_test_simple "movew #imm to Dn" "\x30\x3c\xa5\xa5"
+
+# 2xxx [xxxx [xxxx]]
+#
+run_test_simple "movel Dn to Dn" "\x24\x05"
+run_test_simple "movel An to Dn" "\x24\x0d"
+run_test_simple "movel (An) to Dn" "\x24\x15"
+run_test_simple "movel (An)+ to Dn" "\x24\x1d"
+run_test_simple "movel -(An) to Dn" "\x24\x25"
+run_test_simple "movel (d16,An) to Dn" "\x24\x2d\x78\x20"
+run_test_simple "movel (d8,An,Xi) to Dn" "\x24\x35\x98\x90"
+run_test_simple "movel (xxx).W to Dn" "\x24\x38\x78\x90"
+run_test_simple "movel (xxx).L to Dn" "\x24\x39\x00\x00\x78\x90"
+run_test_simple "movel (d16,PC) to Dn" "\x24\x3a\x78\x20"
+run_test_simple "movel (d8,PC,Xi) to Dn" "\x24\x3b\xa8\x90"
+run_test_simple "movel #imm to Dn" "\x24\x3c\xa8\x90\x00\x00"
 
 # 4890 xxx
 #

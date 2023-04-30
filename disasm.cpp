@@ -46,7 +46,7 @@ struct AddrModeArg {
     uint8_t xn{}; /// Xn register number: 0..7
     char r{}; /// Xi register type specifier letter: either 'd' or 'a'
     uint8_t xi{}; /// Xi register number: 0..7
-    char s{}; /// Size spec letter of Xi: either 'w' or 'l'
+    char s{}; /// Size spec letter of Xi or imm: either 'w' or 'l'
     int32_t value{}; /// Word, Long or Immediate
     /// Size of the extension: 0, 2 or 4 bytes
     constexpr size_t Size() const
@@ -69,8 +69,7 @@ struct AddrModeArg {
         case AddrMode::kD8PCXiAddr:
             return 2;
         case AddrMode::kImmediate:
-            // TODO I don't know, need to figure out
-            return 2;
+            return s == 'l' ? 4 : 2;
         }
         return 0;
     }
@@ -120,20 +119,20 @@ struct AddrModeArg {
     {
         return AddrModeArg{AddrMode::kD8PCXiAddr, m, xn, r, xi, s, d8};
     }
-    static constexpr AddrModeArg Immediate(uint8_t m, uint8_t xn, int32_t value)
+    static constexpr AddrModeArg Immediate(uint8_t m, uint8_t xn, char s, int32_t value)
     {
-        return AddrModeArg{AddrMode::kImmediate, m, xn, 0, 0, 0, value};
+        return AddrModeArg{AddrMode::kImmediate, m, xn, 0, 0, s, value};
     }
     static constexpr AddrModeArg Fetch(
-            const uint32_t offset, const DataBuffer &code, int16_t instr)
+            const uint32_t offset, const DataBuffer &code, int16_t instr, char s)
     {
         const int addrmode = instr & 0x3f;
-        const int m = (addrmode >> 3) & 0x7;
-        const int xn = addrmode & 0x7;
-        return Fetch(offset, code, m, xn);
+        const int m = (addrmode >> 3) & 7;
+        const int xn = addrmode & 7;
+        return Fetch(offset, code, m, xn, s);
     }
     static constexpr AddrModeArg Fetch(
-            const uint32_t offset, const DataBuffer &code, const int m, const int xn);
+            uint32_t offset, const DataBuffer &code, int m, int xn, char s);
     int SNPrint(char *const buf, const size_t bufsz) const
     {
         switch (mode) {
@@ -171,8 +170,9 @@ struct AddrModeArg {
 };
 
 constexpr AddrModeArg AddrModeArg::Fetch(
-        const uint32_t offset, const DataBuffer &code, const int m, const int xn)
+        const uint32_t offset, const DataBuffer &code, const int m, const int xn, const char s)
 {
+    assert(s == 'b' || s == 'w' || s == 'l');
     switch (m) {
     case 0: // Dn
         return AddrModeArg::Dn(m, xn);
@@ -231,7 +231,7 @@ constexpr AddrModeArg AddrModeArg::Fetch(
                 if (briefext & 0x0700) {
                     // briefext must have zeros on 8, 9 an 10-th bits,
                     // i.e. xxxx_x000_xxxx_xxxx
-                    return AddrModeArg{};
+                    break;
                 }
                 const char r = ((briefext >> 15) & 1) ? 'a' : 'd';
                 const uint8_t xi = (briefext >> 12) & 7;
@@ -241,8 +241,22 @@ constexpr AddrModeArg AddrModeArg::Fetch(
             }
             break;
         case 4: // #imm
-            // TODO
-            return AddrModeArg{};
+            if (s == 'l') {
+                if (offset + kInstructionSizeStepBytes < code.occupied_size) {
+                    const int32_t value = GetI32BE(code.buffer + offset);
+                    return AddrModeArg::Immediate(m, xn, s, value);
+                }
+            } else if (offset < code.occupied_size) {
+                const int16_t value = GetI16BE(code.buffer + offset);
+                if (s == 'b') {
+                    if (value > 255 || value < -255) {
+                        // Invalid immediate value for instruction with .b
+                        // suffix
+                        break;
+                    }
+                }
+                return AddrModeArg::Immediate(m, xn, s, value);
+            }
         case 5: // Does not exist
         case 6: // Does not exist
         case 7: // Does not exist
@@ -307,7 +321,7 @@ static void disasm_verbatim(
 static void disasm_jsr_jmp(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, JType jsrjmp)
 {
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr);
+    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn: // 4e80..4e87 / 4ec0..4ec7
@@ -372,12 +386,15 @@ static void disasm_movem(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const auto dir = static_cast<MoveDirection>((instr >> 10) & 1);
+    const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
+    const char suffix = suffix_from_opsize(opsize);
     // Although it would be much mode logical to fetch register mask first,
     // since it goes right next after the instruction, but fetching addressing
     // mode register first provides us the ultimate boundary check with early
     // return, so we don't have to check for node.occupied_size when fetching
     // regmask after this.
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes * 2, code, instr);
+    const auto a = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes * 2, code, instr, suffix);
     switch (a.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn: // 4880..4887 / 4c80..4c87 / 48c0..48c7 / 4cc0..4cc7
@@ -417,8 +434,7 @@ static void disasm_movem(
         return disasm_verbatim(node, instr, code, s);
     }
     node.size = kInstructionSizeStepBytes * 2 + a.Size();
-    const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
-    snprintf(node.mnemonic, kMnemonicBufferSize, "movem%c", suffix_from_opsize(opsize));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "movem%c", suffix);
     char regmask_str[48]{};
     char addrmodearg_str[32]{};
     snprint_reg_mask(regmask_str, sizeof(regmask_str), regmask, a.mode == AddrMode::kAnAddrDecr);
@@ -495,14 +511,13 @@ static void disasm_bra_bsr_bcc(
     if (dispmt % kInstructionSizeStepBytes) {
         return disasm_verbatim(node, instr, code, s);
     }
-    const char *size_spec = "s";
+    const char suffix = dispmt ? 's' : 'w';
     if (dispmt == 0) {
         dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
         if (dispmt % kInstructionSizeStepBytes) {
             return disasm_verbatim(node, instr, code, s);
         }
         node.size = kInstructionSizeStepBytes * 2;
-        size_spec = "w";
     } else {
         node.size = kInstructionSizeStepBytes;
     }
@@ -511,7 +526,7 @@ static void disasm_bra_bsr_bcc(
     const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s", mnemonic, size_spec);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
     const char * const sign = dispmt >= 0 ? "+" : "";
     // FIXME support s.rel_marks option for this instruction
     snprintf(node.arguments, kArgsBufferSize, ".%s%d", sign, dispmt);
@@ -523,10 +538,55 @@ static void chunk_mf000_v0000(DisasmNode& n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static void disasm_move(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void disasm_move_movea(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    // TODO
-    return disasm_verbatim(n, i, c, s);
+    const int size_spec = (instr >> 12) & 3;
+    const char suffix = size_spec == 1 ? 'b' : (size_spec == 3 ? 'w' : 'l');
+    const auto src = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    if (src.mode == AddrMode::kInvalid) {
+        return disasm_verbatim(node, instr, code, s);
+    }
+    if (suffix == 'b' && src.mode == AddrMode::kAn) {
+        // Does not exist
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const int m = (instr >> 6) & 7;
+    const int xn = (instr >> 9) & 7;
+    const auto dst = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, suffix);
+    switch (dst.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        if (suffix == 'b') {
+            // Does not exist
+            return disasm_verbatim(node, instr, code, s);
+        }
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        return disasm_verbatim(node, instr, code, s);
+    }
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    const char *mnemonic = dst.mode == AddrMode::kAn ? "movea" : "move";
+    snprintf(node.mnemonic, kMarkBufferSize, "%s%c", mnemonic, suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 static void chunk_mf000_v4000(
@@ -581,7 +641,8 @@ static void chunk_mf000_v4000(
 static void disasm_addq_subq(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, OpSize opsize)
 {
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr);
+    const char suffix = suffix_from_opsize(opsize);
+    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr, code, s);
@@ -610,7 +671,6 @@ static void disasm_addq_subq(
     }
     node.size = kInstructionSizeStepBytes + a.Size();
     const char *mnemonic = (instr >> 8) & 1 ? "subq" : "addq";
-    const char suffix = suffix_from_opsize(opsize);
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
     const unsigned imm = ((uint8_t((instr >> 9) & 7) - 1) & 7) + 1;
     const int ret = snprintf(node.arguments, kArgsBufferSize, "#%u,", imm);
@@ -694,7 +754,7 @@ static inline const char *scc_mnemonic_by_condition(Condition condition)
 static void disasm_scc_dbcc(
         DisasmNode& node, const uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr);
+    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr, code, s);
@@ -776,7 +836,7 @@ static void m68k_disasm(DisasmNode& n, uint16_t i, const DataBuffer &c, const Se
     case 0x1:
     case 0x2:
     case 0x3:
-        return disasm_move(n, i, c, s);
+        return disasm_move_movea(n, i, c, s);
     case 0x4:
         return chunk_mf000_v4000(n, i, c, s);
     case 0x5:
