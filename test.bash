@@ -62,6 +62,14 @@ run_test_iterative() {
   done
 }
 
+# 70xx / 72xx/ 74xx / 76xx / 78xx / 7axx / 7cxx / 7exx
+#
+run_test_simple "moveq #0 to D0" "\x70\x00"
+run_test_simple "moveq #1 to D2" "\x74\x01"
+run_test_simple "moveq #127 to D7" "\x7e\x7f"
+run_test_simple "moveq #-1 to D5" "\x7a\xff"
+run_test_simple "moveq #-128 to D1" "\x72\x80"
+
 # From random tests
 # 
 run_test_simple "movel %pc@(-16,%a0:l),%a3@+ with nop" "\x26\xfb\x88\xf0\x4e\x71"

@@ -46,10 +46,10 @@ run_test_random() {
   fi
 }
 
-for i in `seq 1 10`; do
-  run_test_random huge$i 1024
-done
-
 for i in `seq 1 1000`; do
   run_test_random tiny$i 1
+done
+
+for i in `seq 1 10`; do
+  run_test_random huge$i 1024
 done

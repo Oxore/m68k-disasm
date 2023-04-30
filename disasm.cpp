@@ -796,10 +796,23 @@ static void chunk_mf000_v5000(DisasmNode& n, uint16_t instr, const DataBuffer &c
     return disasm_addq_subq(n, instr, c, s, opsize);
 }
 
-static void disasm_moveq(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void disasm_moveq(DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    // TODO
-    return disasm_verbatim(n, i, c, s);
+    if (instr & 0x100) {
+        // Does not exist
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const int m = 0;
+    const int xn = (instr >> 9) & 7;
+    const auto dst = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, m, xn, 'w');
+    assert(dst.mode == AddrMode::kDn);
+    char dst_str[32]{};
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "moveq");
+    const int8_t data = instr & 0xff;
+    snprintf(node.arguments, kArgsBufferSize, "#%d,%s", data, dst_str);
+    node.size = kInstructionSizeStepBytes + dst.Size();
+
 }
 
 static void chunk_mf000_v8000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
