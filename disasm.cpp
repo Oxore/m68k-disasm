@@ -513,6 +513,10 @@ static void disasm_bra_bsr_bcc(
     }
     const char suffix = dispmt ? 's' : 'w';
     if (dispmt == 0) {
+        // Check the boundaries
+        if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
+            return disasm_verbatim(node, instr, code, s);
+        }
         dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
         if (dispmt % kInstructionSizeStepBytes) {
             return disasm_verbatim(node, instr, code, s);
@@ -584,7 +588,7 @@ static void disasm_move_movea(
     src.SNPrint(src_str, sizeof(src_str));
     dst.SNPrint(dst_str, sizeof(dst_str));
     const char *mnemonic = dst.mode == AddrMode::kAn ? "movea" : "move";
-    snprintf(node.mnemonic, kMarkBufferSize, "%s%c", mnemonic, suffix);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
     snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
     node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
