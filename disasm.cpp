@@ -656,10 +656,12 @@ static void disasm_move_to(
 }
 
 static void disasm_trap(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
 {
-    // TODO
-    return disasm_verbatim(node, instr, code, s);
+    const unsigned vector = instr & 0xf;
+    snprintf(node.mnemonic, kMnemonicBufferSize, "trap");
+    snprintf(node.arguments, kArgsBufferSize, "#%u", vector);
+    node.size = kInstructionSizeStepBytes;
 }
 
 static void disasm_link_unlink(

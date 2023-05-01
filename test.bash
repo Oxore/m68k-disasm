@@ -93,6 +93,12 @@ run_test_iterative() {
   done
 }
 
+# 4e4x
+#
+run_test_simple "trap 0" "\x4e\x40"
+run_test_simple "trap 8" "\x4e\x48"
+run_test_simple "trap 15" "\x4e\x4f"
+
 # 4e5x
 #
 run_test_simple "linkw positive" "\x4e\x52\x01\x00"
