@@ -102,6 +102,8 @@ run_test_simple "movew (xxx).L to Dn" "\x30\x39\xaa\xaa\xaa\xaa"
 run_test_simple "movew (d16,PC) to Dn" "\x30\x3a\x3f\xff"
 run_test_simple "movew (d8,PC,Xi) to Dn" "\x30\x3b\xa0\x80"
 run_test_simple "movew #imm to Dn" "\x30\x3c\xa5\xa5"
+run_test_simple "moveaw Dn" "\x30\x41"
+run_test_simple "moveaw #imm" "\x30\x7c\xa8\x90"
 
 # 2xxx [xxxx [xxxx]]
 #
@@ -117,6 +119,8 @@ run_test_simple "movel (xxx).L to Dn" "\x24\x39\x00\x00\x78\x90"
 run_test_simple "movel (d16,PC) to Dn" "\x24\x3a\x78\x20"
 run_test_simple "movel (d8,PC,Xi) to Dn" "\x24\x3b\xa8\x90"
 run_test_simple "movel #imm to Dn" "\x24\x3c\xa8\x90\x00\x00"
+run_test_simple "moveal Dn" "\x20\x41"
+run_test_simple "moveal #imm" "\x20\x7c\xa8\x90\x00\x00"
 
 # 4890 xxx
 #
