@@ -655,6 +655,68 @@ static void disasm_move_to(
     node.size = kInstructionSizeStepBytes + src.Size();
 }
 
+const char *mnemonic_for_chunk_mf800_v4000(const unsigned opcode)
+{
+    switch (opcode) {
+    case 0: return "negx";
+    case 1: return "clr";
+    case 2: return "neg";
+    case 3: return "not";
+    }
+    assert(false);
+    return "?";
+}
+
+static void chunk_mf900_v4000(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
+    const unsigned opcode = (instr >> 9) & 3;
+    if (opsize == OpSize::kInvalid) {
+        switch (opcode) {
+        case 0:
+            return disasm_move_from_sr(node, instr, code, s);
+        case 1:
+            return disasm_verbatim(node, instr, code, s);
+        case 2:
+            return disasm_move_to(node, instr, code, s, "ccr");
+        case 3:
+            return disasm_move_to(node, instr, code, s, "sr");
+        }
+        assert(false);
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const char *mnemonic = mnemonic_for_chunk_mf800_v4000(opcode);
+    const char suffix = suffix_from_opsize(opsize);
+    const auto a = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    switch (a.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        return disasm_verbatim(node, instr, code, s);
+    }
+    char a_str[32]{};
+    a.SNPrint(a_str, sizeof(a_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s", a_str);
+    node.size = kInstructionSizeStepBytes + a.Size();
+}
+
 static void disasm_trap(
         DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
 {
@@ -725,12 +787,8 @@ static void disasm_trivial(
 static void chunk_mf000_v4000(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    if ((instr & 0xffc0) == 0x40c0) {
-        return disasm_move_from_sr(node, instr, code, s);
-    } else if ((instr & 0xffc0) == 0x44c0) {
-        return disasm_move_to(node, instr, code, s, "ccr");
-    } else if ((instr & 0xffc0) == 0x46c0) {
-        return disasm_move_to(node, instr, code, s, "sr");
+    if ((instr & 0xf900) == 0x4000) {
+        return chunk_mf900_v4000(node, instr, code, s);
     } else if (instr == 0x4afc) {
         return disasm_trivial(node, instr, code, s, "illegal");
     } else if ((instr & 0xfff0) == 0x4e40) {

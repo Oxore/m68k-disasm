@@ -93,6 +93,21 @@ run_test_iterative() {
   done
 }
 
+# 4xxx
+#
+run_test_simple "negxb Dn" "\x40\x04"
+run_test_simple "clrb Dn" "\x42\x05"
+run_test_simple "negb Dn" "\x44\x06"
+run_test_simple "notb Dn" "\x46\x07"
+run_test_simple "negxw Dn" "\x40\x44"
+run_test_simple "clrw Dn" "\x42\x45"
+run_test_simple "negw Dn" "\x44\x46"
+run_test_simple "notw Dn" "\x46\x47"
+run_test_simple "negxl Dn" "\x40\x84"
+run_test_simple "clrl Dn" "\x42\x85"
+run_test_simple "negl Dn" "\x44\x86"
+run_test_simple "notl Dn" "\x46\x87"
+
 # 4e4x
 #
 run_test_simple "trap 0" "\x4e\x40"
@@ -111,7 +126,7 @@ run_test_simple "unlk" "\x4e\x5a"
 run_test_simple "move to USP" "\x4e\x62"
 run_test_simple "move from USP" "\x4e\x6f"
 
-# 40c0..40ff
+# 4xxx
 #
 run_test_simple "move from SR" "\x40\xc1"
 run_test_simple "move to CCR" "\x44\xc2"
