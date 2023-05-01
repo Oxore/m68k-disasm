@@ -93,6 +93,18 @@ run_test_iterative() {
   done
 }
 
+# 4e5x
+#
+run_test_simple "linkw positive" "\x4e\x52\x01\x00"
+run_test_simple "linkw negative" "\x4e\x52\xff\xff"
+run_test_simple "linkw negative" "\x4e\x52\x80\x00"
+run_test_simple "unlk" "\x4e\x5a"
+
+# 4e6x
+#
+run_test_simple "move to USP" "\x4e\x62"
+run_test_simple "move from USP" "\x4e\x6f"
+
 # 40c0..40ff
 #
 run_test_simple "move from SR" "\x40\xc1"
