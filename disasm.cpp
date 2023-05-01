@@ -385,14 +385,18 @@ static void disasm_jsr_jmp(
 static void disasm_movem(
         DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
+    if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
+        // Not enough space for regmask
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const unsigned regmask = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
+    if (regmask == 0) {
+        // This is just not representable: at least one register must be specified
+        return disasm_verbatim(node, instr, code, s);
+    }
     const auto dir = static_cast<MoveDirection>((instr >> 10) & 1);
     const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
     const char suffix = suffix_from_opsize(opsize);
-    // Although it would be much mode logical to fetch register mask first,
-    // since it goes right next after the instruction, but fetching addressing
-    // mode register first provides us the ultimate boundary check with early
-    // return, so we don't have to check for node.occupied_size when fetching
-    // regmask after this.
     const auto a = AddrModeArg::Fetch(
             node.offset + kInstructionSizeStepBytes * 2, code, instr, suffix);
     switch (a.mode) {
@@ -424,13 +428,6 @@ static void disasm_movem(
         }
         break;
     case AddrMode::kImmediate: // 4ebc / 4efc
-        return disasm_verbatim(node, instr, code, s);
-    }
-    // Make sure that regmask is fetched after AddrModeArg has done boundary
-    // check.
-    const unsigned regmask = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-    if (regmask == 0) {
-        // This is just not representable: at least one register must be specified
         return disasm_verbatim(node, instr, code, s);
     }
     node.size = kInstructionSizeStepBytes * 2 + a.Size();

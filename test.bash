@@ -49,6 +49,37 @@ run_test_simple() {
   fi
 }
 
+run_test_expect_short() {
+  local test_name=$1
+  local test_name_sanitized=${test_name//[^a-zA-Z0-9_\-]/-}
+  local data=$2
+  local file_orig_bin=${TEST_DIR}/${test_name_sanitized}.orig.bin
+  local file_asm=${TEST_DIR}/${test_name_sanitized}.S
+  local file_as_o=${TEST_DIR}/${test_name_sanitized}.as.o
+  local file_as_elf=${TEST_DIR}/${test_name_sanitized}.as.elf
+  local file_as_bin=${TEST_DIR}/${test_name_sanitized}.as.bin
+  echo -ne "Test expect .short \"${test_name}\"... "
+  echo -ne "${data}" >${file_orig_bin}
+  ${DISASM} -o ${file_asm} ${file_orig_bin}
+  ${AS} -m68000 -o ${file_as_o} ${file_asm}
+  ${LD} -o ${file_as_elf} ${file_as_o}
+  ${OBJCOPY} ${file_as_elf} -O binary ${file_as_bin}
+  if ! grep ".short" ${file_asm} >/dev/null 2>&1; then
+    echo -e "${CRED}FAIL${CRST}: NOT .short emitted, but .short EXPECTED"
+    cat ${file_asm}
+  elif ! cmp ${file_orig_bin} ${file_as_bin} >/dev/null 2>&1; then
+    echo -e "${CRED}FAIL${CRST}: output and input binaries do not match"
+    cat ${file_asm}
+    echo ${file_orig_bin}
+    hexdump -Cv ${file_orig_bin} | head -n1
+    echo ${file_as_bin}
+    hexdump -Cv ${file_as_bin} | head -n1
+  else
+    echo -e "${CGREEN}OK${CRST}"
+    #cat ${file_asm}
+  fi
+}
+
 run_test_iterative() {
   local test_name=$1
   local prefix=$2
@@ -141,6 +172,11 @@ run_test_simple "movemw (d16,An) to all registers" "\x4c\xa8\xff\xff\x30\x1d"
 run_test_simple "moveml (d8,An,Xi) to all registers" "\x4c\xf7\xff\xff\x48\x0a"
 run_test_simple "movemw (xxx).W to all registers" "\x4c\xb8\xff\xff\x80\x10"
 run_test_simple "moveml (xxx).L to all registers" "\x4c\xf9\xff\xff\x00\x00\x7f\xf0"
+
+# From random tests
+#
+run_test_expect_short "movem truncated" "\x48\x92"
+
 
 # 5x38 / 5x78 / 5xb8 (xxx).W
 #
