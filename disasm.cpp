@@ -131,7 +131,7 @@ struct AddrModeArg {
         const int xn = addrmode & 7;
         return Fetch(offset, code, m, xn, s);
     }
-    static constexpr AddrModeArg Fetch(
+    static inline constexpr AddrModeArg Fetch(
             uint32_t offset, const DataBuffer &code, int m, int xn, char s);
     int SNPrint(char *const buf, const size_t bufsz) const
     {
@@ -278,7 +278,7 @@ static char suffix_from_opsize(OpSize opsize)
     return 'l';
 }
 
-size_t snprint_reg_mask(
+static inline size_t snprint_reg_mask(
         char *const buf, const size_t bufsz, const uint32_t regmask_arg, const bool predecrement)
 {
     const uint32_t regmask = regmask_arg & 0xffff;
@@ -311,7 +311,7 @@ size_t snprint_reg_mask(
 }
 
 static void disasm_verbatim(
-        DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
+        DisasmNode &node, uint16_t instr, const DataBuffer &, const Settings &)
 {
     node.size = kInstructionSizeStepBytes;
     snprintf(node.mnemonic, kMnemonicBufferSize, ".short");
@@ -319,7 +319,7 @@ static void disasm_verbatim(
 }
 
 static void disasm_jsr_jmp(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, JType jsrjmp)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s, JType jsrjmp)
 {
     const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
@@ -383,7 +383,7 @@ static void disasm_jsr_jmp(
 }
 
 static void disasm_movem(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
         // Not enough space for regmask
@@ -444,13 +444,13 @@ static void disasm_movem(
 }
 
 static void disasm_lea(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
         return disasm_verbatim(node, instr, code, s);
 }
 
 static void disasm_chk(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
         return disasm_verbatim(node, instr, code, s);
 }
@@ -499,7 +499,7 @@ static inline const char *bcc_mnemonic_by_condition(Condition condition)
 }
 
 static void disasm_bra_bsr_bcc(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     const char *mnemonic = bcc_mnemonic_by_condition(condition);
@@ -534,34 +534,100 @@ static void disasm_bra_bsr_bcc(
     return;
 }
 
-const char *mnemonic_for_bitops(OpSize opsize)
+static inline const char *mnemonic_for_bitops(unsigned opcode)
 {
-    switch (opsize) {
-    case OpSize::kByte: return "btst";
-    case OpSize::kWord: return "bchg";
-    case OpSize::kLong: return "bclr";
-    case OpSize::kInvalid: return "bset";
+    switch (opcode) {
+    case 0: return "btst";
+    case 1: return "bchg";
+    case 2: return "bclr";
+    case 3: return "bset";
     }
     assert(false);
     return "?";
 }
 
-static void disasm_dobule_args_bitops_movep(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static inline void disasm_movep(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    // TODO
     return disasm_verbatim(node, instr, code, s);
 }
 
-static void disasm_bitops(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static void disasm_src_arg_bitops_movep(
+        DisasmNode &node,
+        const uint16_t instr,
+        const DataBuffer &code,
+        const Settings &s,
+        const bool has_dn_src = true)
 {
-    // TODO
-    return disasm_verbatim(node, instr, code, s);
+    const unsigned m = (instr >> 3) & 7;
+    if ((m == 1) && has_dn_src) {
+        return disasm_movep(node, instr, code, s);
+    }
+    const unsigned dn = ((instr >> 9) & 7);
+    const unsigned xn = instr & 7;
+    // Fetch AddrMode::kDn if has_dn_src, otherwise fetch AddrMode::kImmediate
+    // byte
+    const auto src = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes,
+            code,
+            (has_dn_src) ? 0 : 7,
+            dn,
+            'b');
+    if (src.mode == AddrMode::kInvalid) {
+        return disasm_verbatim(node, instr, code, s);
+    }
+    if (has_dn_src) {
+        assert(src.mode == AddrMode::kDn);
+    } else {
+        assert(dn == 4);
+        assert(src.mode == AddrMode::kImmediate);
+    }
+    const auto dst = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, 'w');
+    const unsigned opcode = (instr >> 6) & 3;
+    switch (dst.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+        if (opcode != 0) {
+            // PC relative destination address argument available for BTST only
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kImmediate:
+        return disasm_verbatim(node, instr, code, s);
+    }
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    const char suffix = dst.mode == AddrMode::kDn ? 'l' : 'b';
+    const char *mnemonic = mnemonic_for_bitops(opcode);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+}
+
+static void disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    return disasm_src_arg_bitops_movep(n, i, c, s, false);
 }
 
 static inline void disasm_logical_imm_to(
-        DisasmNode& node, const char* mnemonic, const char suffix, const int16_t imm)
+        DisasmNode &node, const char* mnemonic, const char suffix, const int16_t imm)
 {
     const char *reg = suffix == 'b' ? "ccr" : "sr";
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
@@ -569,7 +635,7 @@ static inline void disasm_logical_imm_to(
     node.size = kInstructionSizeStepBytes * 2;
 }
 
-const char *mnemonic_for_chunk_mf000_v1000(const unsigned opcode)
+static inline const char *mnemonic_for_chunk_mf000_v1000(const unsigned opcode)
 {
     switch (opcode) {
     case 0: return "ori";
@@ -586,11 +652,11 @@ const char *mnemonic_for_chunk_mf000_v1000(const unsigned opcode)
 }
 
 static void chunk_mf000_v0000(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const bool has_source_reg = (instr >> 8) & 1;
     if (has_source_reg) {
-        return disasm_dobule_args_bitops_movep(node, instr, code, s);
+        return disasm_src_arg_bitops_movep(node, instr, code, s);
     }
     const unsigned opcode = (instr >> 9) & 7;
     if (opcode == 7) {
@@ -665,7 +731,7 @@ static void chunk_mf000_v0000(
 }
 
 static void disasm_move_movea(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const int size_spec = (instr >> 12) & 3;
     const char suffix = size_spec == 1 ? 'b' : (size_spec == 3 ? 'w' : 'l');
@@ -716,7 +782,7 @@ static void disasm_move_movea(
 }
 
 static void disasm_move_from_sr(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const char suffix = 'w';
     const auto dst = AddrModeArg::Fetch(
@@ -749,7 +815,7 @@ static void disasm_move_from_sr(
 }
 
 static void disasm_move_to(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, const char* reg)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s, const char* reg)
 {
     const char suffix = 'w';
     const auto src = AddrModeArg::Fetch(
@@ -780,7 +846,7 @@ static void disasm_move_to(
     node.size = kInstructionSizeStepBytes + src.Size();
 }
 
-const char *mnemonic_for_chunk_mf800_v4000(const unsigned opcode)
+static inline const char *mnemonic_for_chunk_mf800_v4000(const unsigned opcode)
 {
     switch (opcode) {
     case 0: return "negx";
@@ -793,7 +859,7 @@ const char *mnemonic_for_chunk_mf800_v4000(const unsigned opcode)
 }
 
 static void chunk_mf900_v4000(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     const unsigned opcode = (instr >> 9) & 3;
@@ -842,15 +908,15 @@ static void chunk_mf900_v4000(
     node.size = kInstructionSizeStepBytes + a.Size();
 }
 
-static void disasm_trivial(
-        DisasmNode& node, uint16_t, const DataBuffer &, const Settings &, const char* mnemonic)
+static inline void disasm_trivial(
+        DisasmNode &node, uint16_t, const DataBuffer &, const Settings &, const char* mnemonic)
 {
     node.size = kInstructionSizeStepBytes;
     snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
 }
 
 static inline void disasm_tas(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
@@ -881,7 +947,7 @@ static inline void disasm_tas(
 }
 
 static void disasm_tst_tas_illegal(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     const int m = (instr >> 3) & 7;
@@ -922,7 +988,7 @@ static void disasm_tst_tas_illegal(
 }
 
 static void disasm_trap(
-        DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
+        DisasmNode &node, uint16_t instr, const DataBuffer &, const Settings &)
 {
     const unsigned vector = instr & 0xf;
     snprintf(node.mnemonic, kMnemonicBufferSize, "trap");
@@ -931,7 +997,7 @@ static void disasm_trap(
 }
 
 static void disasm_link_unlink(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const bool unlk = (instr >> 3) & 1;
     const unsigned xn = instr & 7;
@@ -968,7 +1034,7 @@ static void disasm_link_unlink(
 }
 
 static void disasm_move_usp(
-        DisasmNode& node, uint16_t instr, const DataBuffer &, const Settings &)
+        DisasmNode &node, uint16_t instr, const DataBuffer &, const Settings &)
 {
     const unsigned xn = instr & 7;
     const auto dir = static_cast<MoveDirection>((instr >> 3) & 1);
@@ -982,7 +1048,7 @@ static void disasm_move_usp(
 }
 
 static void chunk_mf000_v4000(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if ((instr & 0xf900) == 0x4000) {
         return chunk_mf900_v4000(node, instr, code, s);
@@ -1029,7 +1095,7 @@ static void chunk_mf000_v4000(
 }
 
 static void disasm_addq_subq(
-        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s, OpSize opsize)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s, OpSize opsize)
 {
     const char suffix = suffix_from_opsize(opsize);
     const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, suffix);
@@ -1093,7 +1159,7 @@ static inline const char *dbcc_mnemonic_by_condition(Condition condition)
     return "?";
 }
 
-static void disasm_dbcc(DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static void disasm_dbcc(DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
         return disasm_verbatim(node, instr, code, s);
@@ -1142,7 +1208,7 @@ static inline const char *scc_mnemonic_by_condition(Condition condition)
 }
 
 static void disasm_scc_dbcc(
-        DisasmNode& node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
@@ -1173,7 +1239,7 @@ static void disasm_scc_dbcc(
     a.SNPrint(node.arguments, kArgsBufferSize);
 }
 
-static void chunk_mf000_v5000(DisasmNode& n, uint16_t instr, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_v5000(DisasmNode &n, uint16_t instr, const DataBuffer &c, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
@@ -1182,7 +1248,7 @@ static void chunk_mf000_v5000(DisasmNode& n, uint16_t instr, const DataBuffer &c
     return disasm_addq_subq(n, instr, c, s, opsize);
 }
 
-static void disasm_moveq(DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static void disasm_moveq(DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if (instr & 0x100) {
         // Does not exist
@@ -1201,37 +1267,37 @@ static void disasm_moveq(DisasmNode& node, uint16_t instr, const DataBuffer &cod
 
 }
 
-static void chunk_mf000_v8000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_v8000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_v9000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_v9000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_vb000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_vb000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_vc000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_vc000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_vd000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_vd000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_ve000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void chunk_mf000_ve000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
 }
 
-static void m68k_disasm(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     switch ((i & 0xf000) >> 12) {
     case 0x0:

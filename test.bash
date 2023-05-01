@@ -76,7 +76,7 @@ run_test_simple() {
     cat ${file_asm}
   else
     echo -e "${CGREEN}OK${CRST}"
-    #cat ${file_asm}
+    cat ${file_asm}
   fi
 }
 
@@ -93,7 +93,18 @@ run_test_iterative() {
   done
 }
 
-# 0xxx
+# 0xxx bitwise ops
+#
+run_test_simple "btstl immediate in Dn" "\x08\x07\x00\x06"
+run_test_simple "btstb immediate in (An)" "\x08\x17\x00\x06"
+run_test_simple "btstb immediate in (xxx).L" "\x08\x39\x00\x06\xff\x00\x00\x00"
+run_test_simple "btstb Dn in (xxx).L" "\x03\x39\xff\x00\x00\x00"
+run_test_simple "bchgb Dn in (xxx).L" "\x05\x79\xff\x00\x00\x00"
+run_test_simple "bclrb Dn in (xxx).L" "\x07\xb9\xff\x00\x00\x00"
+run_test_simple "bsetb Dn in (xxx).L" "\x09\xf9\xff\x00\x00\x00"
+run_test_expect_short "btstb large immediate in (xxx).L" "\x08\x39\x10\x21\xff\x00\x00\x00"
+
+# 0xxx immediate ops
 #
 run_test_simple "orib zero to CCR" "\x00\x3c\x00\x00"
 run_test_simple "orib positive to CCR" "\x00\x3c\x00\x01"
