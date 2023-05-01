@@ -18,37 +18,6 @@ CRST="\033[39m"
 rm -rf ${TEST_DIR}
 mkdir -p ${TEST_DIR}
 
-run_test_simple() {
-  local test_name=$1
-  local test_name_sanitized=${test_name//[^a-zA-Z0-9_\-]/-}
-  local data=$2
-  local file_orig_bin=${TEST_DIR}/${test_name_sanitized}.orig.bin
-  local file_asm=${TEST_DIR}/${test_name_sanitized}.S
-  local file_as_o=${TEST_DIR}/${test_name_sanitized}.as.o
-  local file_as_elf=${TEST_DIR}/${test_name_sanitized}.as.elf
-  local file_as_bin=${TEST_DIR}/${test_name_sanitized}.as.bin
-  echo -ne "Test \"${test_name}\"... "
-  echo -ne "${data}" >${file_orig_bin}
-  ${DISASM} -o ${file_asm} ${file_orig_bin}
-  ${AS} -m68000 -o ${file_as_o} ${file_asm}
-  ${LD} -o ${file_as_elf} ${file_as_o}
-  ${OBJCOPY} ${file_as_elf} -O binary ${file_as_bin}
-  if ! cmp ${file_orig_bin} ${file_as_bin} >/dev/null 2>&1; then
-    echo -e "${CRED}FAIL${CRST}: output and input binaries do not match"
-    cat ${file_asm}
-    echo ${file_orig_bin}
-    hexdump -Cv ${file_orig_bin} | head -n1
-    echo ${file_as_bin}
-    hexdump -Cv ${file_as_bin} | head -n1
-  elif grep ".short" ${file_asm} >/dev/null 2>&1; then
-    echo -e "${CRED}FAIL${CRST}: .short emitted"
-    cat ${file_asm}
-  else
-    echo -e "${CGREEN}OK${CRST}"
-    #cat ${file_asm}
-  fi
-}
-
 run_test_expect_short() {
   local test_name=$1
   local test_name_sanitized=${test_name//[^a-zA-Z0-9_\-]/-}
@@ -80,6 +49,37 @@ run_test_expect_short() {
   fi
 }
 
+run_test_simple() {
+  local test_name=$1
+  local test_name_sanitized=${test_name//[^a-zA-Z0-9_\-]/-}
+  local data=$2
+  local file_orig_bin=${TEST_DIR}/${test_name_sanitized}.orig.bin
+  local file_asm=${TEST_DIR}/${test_name_sanitized}.S
+  local file_as_o=${TEST_DIR}/${test_name_sanitized}.as.o
+  local file_as_elf=${TEST_DIR}/${test_name_sanitized}.as.elf
+  local file_as_bin=${TEST_DIR}/${test_name_sanitized}.as.bin
+  echo -ne "Test \"${test_name}\"... "
+  echo -ne "${data}" >${file_orig_bin}
+  ${DISASM} -o ${file_asm} ${file_orig_bin}
+  ${AS} -m68000 -o ${file_as_o} ${file_asm}
+  ${LD} -o ${file_as_elf} ${file_as_o}
+  ${OBJCOPY} ${file_as_elf} -O binary ${file_as_bin}
+  if ! cmp ${file_orig_bin} ${file_as_bin} >/dev/null 2>&1; then
+    echo -e "${CRED}FAIL${CRST}: output and input binaries do not match"
+    cat ${file_asm}
+    echo ${file_orig_bin}
+    hexdump -Cv ${file_orig_bin} | head -n1
+    echo ${file_as_bin}
+    hexdump -Cv ${file_as_bin} | head -n1
+  elif grep ".short" ${file_asm} >/dev/null 2>&1; then
+    echo -e "${CRED}FAIL${CRST}: .short emitted"
+    cat ${file_asm}
+  else
+    echo -e "${CGREEN}OK${CRST}"
+    #cat ${file_asm}
+  fi
+}
+
 run_test_iterative() {
   local test_name=$1
   local prefix=$2
@@ -92,6 +92,12 @@ run_test_iterative() {
     run_test_simple "${test_name}:${value}" "${prefix}\x${value}${suffix}"
   done
 }
+
+# 40c0..40ff
+#
+run_test_simple "move from SR" "\x40\xc1"
+run_test_simple "move to CCR" "\x44\xc2"
+run_test_simple "move to SR" "\x46\xc3"
 
 # 70xx / 72xx/ 74xx / 76xx / 78xx / 7axx / 7cxx / 7exx
 #
@@ -176,7 +182,6 @@ run_test_simple "moveml (xxx).L to all registers" "\x4c\xf9\xff\xff\x00\x00\x7f\
 # From random tests
 #
 run_test_expect_short "movem truncated" "\x48\x92"
-
 
 # 5x38 / 5x78 / 5xb8 (xxx).W
 #
