@@ -93,6 +93,15 @@ run_test_iterative() {
   done
 }
 
+# 4axx
+#
+run_test_simple "tas Dn" "\x4a\xc2"
+run_test_simple "tstb Dn" "\x4a\x02"
+run_test_simple "tstw Dn" "\x4a\x42"
+run_test_simple "tstl Dn" "\x4a\x82"
+run_test_expect_short "tas (d16,PC)" "\x4a\xfa\xff\xff"
+run_test_expect_short "tas (d8,PC,Xi)" "\x4a\xfb\x00\x00"
+
 # 4xxx
 #
 run_test_simple "negxb Dn" "\x40\x04"
