@@ -534,9 +534,134 @@ static void disasm_bra_bsr_bcc(
     return;
 }
 
-static void chunk_mf000_v0000(DisasmNode& n, uint16_t i, const DataBuffer &c, const Settings &s)
+const char *mnemonic_for_bitops(OpSize opsize)
 {
-    return disasm_verbatim(n, i, c, s);
+    switch (opsize) {
+    case OpSize::kByte: return "btst";
+    case OpSize::kWord: return "bchg";
+    case OpSize::kLong: return "bclr";
+    case OpSize::kInvalid: return "bset";
+    }
+    assert(false);
+    return "?";
+}
+
+static void disasm_dobule_args_bitops_movep(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    // TODO
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static void disasm_bitops(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    // TODO
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static inline void disasm_logical_imm_to(
+        DisasmNode& node, const char* mnemonic, const char suffix, const int16_t imm)
+{
+    const char *reg = suffix == 'b' ? "ccr" : "sr";
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+    snprintf(node.arguments, kArgsBufferSize, "#%d,%%%s", imm, reg);
+    node.size = kInstructionSizeStepBytes * 2;
+}
+
+const char *mnemonic_for_chunk_mf000_v1000(const unsigned opcode)
+{
+    switch (opcode) {
+    case 0: return "ori";
+    case 1: return "andi";
+    case 2: return "subi";
+    case 3: return "addi";
+    case 4: break;
+    case 5: return "eori";
+    case 6: return "cmpi";
+    case 7: break;
+    }
+    assert(false);
+    return "?";
+}
+
+static void chunk_mf000_v0000(
+        DisasmNode& node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    const bool has_source_reg = (instr >> 8) & 1;
+    if (has_source_reg) {
+        return disasm_dobule_args_bitops_movep(node, instr, code, s);
+    }
+    const unsigned opcode = (instr >> 9) & 7;
+    if (opcode == 7) {
+        // Does not exist
+        return disasm_verbatim(node, instr, code, s);
+    }
+    if (opcode == 4) {
+        return disasm_bitops(node, instr, code, s);
+    }
+    const int m = (instr >> 3) & 7;
+    const int xn = instr & 7;
+    const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+            // Does not exist
+            return disasm_verbatim(node, instr, code, s);
+    }
+    // Anticipating #imm which means "to CCR"/"to SR", depending on OpSize
+    if (m == 7 && xn == 4) {
+        if (opcode == 2 || opcode == 3 || opcode == 6) {
+            // CMPI, SUBI and ANDI neither have immediate destination arguments
+            // nor "to CCR"/"to SR" variations
+            return disasm_verbatim(node, instr, code, s);
+        }
+        if (opsize == OpSize::kLong) {
+            // Does not exist
+            return disasm_verbatim(node, instr, code, s);
+        }
+    }
+    const char suffix = suffix_from_opsize(opsize);
+    const auto src = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, 7, 4, suffix);
+    if (src.mode == AddrMode::kInvalid) {
+        return disasm_verbatim(node, instr, code, s);
+    }
+    assert(src.mode == AddrMode::kImmediate);
+    const char *mnemonic = mnemonic_for_chunk_mf000_v1000(opcode);
+    if (m == 7 && xn == 4) {
+        return disasm_logical_imm_to(node, mnemonic, suffix, src.value);
+    }
+    const auto dst = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, suffix);
+    switch (dst.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+        if (opcode != 6) {
+            // PC relative destination address argument available for CMPI only
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kImmediate:
+        return disasm_verbatim(node, instr, code, s);
+    }
+    char dst_str[32]{};
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+    snprintf(node.arguments, kArgsBufferSize, "#%d,%s", src.value, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 static void disasm_move_movea(
@@ -760,7 +885,7 @@ static void disasm_tst_tas_illegal(
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     const int m = (instr >> 3) & 7;
-    const int xn = instr& 7;
+    const int xn = instr & 7;
     if (opsize == OpSize::kInvalid) {
         if (m == 7 && xn == 4){
             return disasm_trivial(node, instr, code, s, "illegal");

@@ -93,6 +93,34 @@ run_test_iterative() {
   done
 }
 
+# 0xxx
+#
+run_test_simple "orib zero to CCR" "\x00\x3c\x00\x00"
+run_test_simple "orib positive to CCR" "\x00\x3c\x00\x01"
+run_test_simple "orib positive to CCR" "\x00\x3c\x00\x7f"
+run_test_expect_short "orib #imm (too much for orib) to CCR" "\x00\x3c\x01\x00"
+run_test_simple "orib negative to CCR" "\x00\x3c\xff\x80"
+run_test_simple "orib negative to CCR" "\x00\x3c\xff\xff"
+run_test_simple "oriw zero to SR" "\x00\x7c\x00\x00"
+run_test_simple "oriw positive to SR" "\x00\x7c\x00\x0a"
+run_test_simple "andiw positive to SR" "\x02\x7c\x00\x0a"
+run_test_simple "eoriw positive to SR" "\x0a\x7c\x00\x0a"
+run_test_simple "andib positive to CCR" "\x02\x3c\x00\x0a"
+run_test_simple "eorib positive to CCR" "\x0a\x3c\x00\x0a"
+run_test_simple "orib positive to Dn" "\x00\x07\x00\x0a"
+run_test_simple "oriw positive to Dn" "\x00\x45\x00\x0a"
+run_test_simple "oril positive to Dn" "\x00\x83\x00\x00\x00\x0a"
+run_test_simple "andib negative to Dn" "\x00\x07\xff\x80"
+run_test_simple "andiw negative to Dn" "\x00\x45\xff\x80"
+run_test_simple "andil negative to Dn" "\x00\x83\xff\x80\x00\x00"
+run_test_simple "addiw zero to (An)+" "\x06\x5a\x00\x00"
+run_test_simple "subiw zero from -(An)" "\x06\x62\x00\x00"
+run_test_simple "cmpib zero to (An)" "\x0c\x12\x00\x20"
+run_test_simple "cmpiw zero to (An)" "\x0c\x52\x00\x30"
+run_test_simple "cmpil zero to (An)" "\x0c\x92\x00\x00\x00\x40"
+# From random tests
+run_test_expect_short "cmpil with invalid opsize" "\x0c\xe4\x26\xa3"
+
 # 4axx
 #
 run_test_simple "tas Dn" "\x4a\xc2"
@@ -355,6 +383,12 @@ run_test_simple "bges" "\x6c\x0a"
 run_test_simple "blts" "\x6d\x0a"
 run_test_simple "bgts" "\x6e\x0a"
 run_test_simple "bles" "\x6f\x0a"
+
+# 4afc
+#
+# reset
+#
+run_test_simple "illegal" "\x4a\xfc"
 
 # 4e70
 #
