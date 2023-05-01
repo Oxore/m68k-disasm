@@ -484,7 +484,39 @@ static void disasm_lea(
 static void disasm_chk(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
+    const auto src = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, 'w');
+    switch (src.mode) {
+    case AddrMode::kInvalid:
         return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const unsigned dn = ((instr >> 9) & 7);
+    const auto dst = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, 0, dn, 'w');
+    assert(dst.mode == AddrMode::kDn);
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "chkw");
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 enum class Condition {

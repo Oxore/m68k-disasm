@@ -93,13 +93,21 @@ run_test_iterative() {
   done
 }
 
-# 4xxx lea
+# 4xxx chkw
 #
-run_test_simple "lea (An)" "\x41\xd0"
-run_test_simple "lea (d16,An)" "\x47\xe9\x80\x00"
-run_test_simple "lea (d8,An,Xi)" "\x47\xf2\xa8\x7f"
-run_test_simple "lea (d16,PC)" "\x47\xfa\x7f\xff"
-run_test_simple "lea (d8,PC,Xi)" "\x47\xfb\xa8\x80"
+run_test_simple "chkw Dn" "\x47\x82"
+run_test_simple "chkw (An)" "\x41\x90"
+run_test_simple "chkw (An)+" "\x47\x9b"
+run_test_simple "chkw (d16,An)" "\x47\xa9\x80\x00"
+run_test_simple "chkw (d8,An,Xi)" "\x47\xb2\xa8\x7f"
+
+# 4xxx leal
+#
+run_test_simple "leal (An)" "\x41\xd0"
+run_test_simple "leal (d16,An)" "\x47\xe9\x80\x00"
+run_test_simple "leal (d8,An,Xi)" "\x47\xf2\xa8\x7f"
+run_test_simple "leal (d16,PC)" "\x47\xfa\x7f\xff"
+run_test_simple "leal (d8,PC,Xi)" "\x47\xfb\xa8\x80"
 
 # 0xxx movep
 #
