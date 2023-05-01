@@ -76,7 +76,7 @@ run_test_simple() {
     cat ${file_asm}
   else
     echo -e "${CGREEN}OK${CRST}"
-    cat ${file_asm}
+    #cat ${file_asm}
   fi
 }
 
@@ -92,6 +92,13 @@ run_test_iterative() {
     run_test_simple "${test_name}:${value}" "${prefix}\x${value}${suffix}"
   done
 }
+
+# 0xxx movep
+#
+run_test_simple "movepw Dn to (An)" "\x01\x0b\x00\xa0"
+run_test_simple "movepl Dn to (An)" "\x03\x4a\x00\xa0"
+run_test_simple "movepw (An) to Dn" "\x05\x89\x00\xa0"
+run_test_simple "movepl (An) to Dn" "\x07\xc8\x00\xa0"
 
 # 0xxx bitwise ops
 #

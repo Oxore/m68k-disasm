@@ -549,7 +549,31 @@ static inline const char *mnemonic_for_bitops(unsigned opcode)
 static inline void disasm_movep(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    return disasm_verbatim(node, instr, code, s);
+    const unsigned dn = ((instr >> 9) & 7);
+    const unsigned an = instr & 7;
+    const char suffix = ((instr >> 6) & 1) ? 'l' : 'w';
+    const auto dir = static_cast<MoveDirection>(!((instr >> 7) & 1));
+    const auto addr = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, 5, an, suffix);
+    if (addr.mode == AddrMode::kInvalid) {
+        // Boundary check failed, most likely
+        return disasm_verbatim(node, instr, code, s);
+    }
+    assert(addr.mode == AddrMode::kD16AnAddr);
+    const auto reg = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, 0, dn, suffix);
+    assert(reg.mode == AddrMode::kDn);
+    char addr_str[32]{};
+    char reg_str[32]{};
+    addr.SNPrint(addr_str, sizeof(addr_str));
+    reg.SNPrint(reg_str, sizeof(reg_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "movep%c", suffix);
+    if (dir == MoveDirection::kRegisterToMemory) {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+    } else {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+    }
+    node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
 static void disasm_src_arg_bitops_movep(
