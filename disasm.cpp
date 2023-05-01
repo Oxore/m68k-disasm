@@ -446,7 +446,39 @@ static void disasm_movem(
 static void disasm_lea(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
+    const auto addr = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, 'l');
+    switch (addr.mode) {
+    case AddrMode::kInvalid:
+    case AddrMode::kDn:
+    case AddrMode::kAn:
         return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr:
+        break;
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+        break;
+    case AddrMode::kImmediate:
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const unsigned an = ((instr >> 9) & 7);
+    const auto reg = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, 1, an, 'l');
+    assert(reg.mode == AddrMode::kAn);
+    char addr_str[32]{};
+    char reg_str[32]{};
+    addr.SNPrint(addr_str, sizeof(addr_str));
+    reg.SNPrint(reg_str, sizeof(reg_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "leal");
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+    node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
 static void disasm_chk(
@@ -1110,9 +1142,9 @@ static void chunk_mf000_v4000(
         return disasm_jsr_jmp(node, instr, code, s, JType::kJmp);
     } else if ((instr & 0xfb80) == 0x4880) {
         return disasm_movem(node, instr, code, s);
-    } else if ((instr & 0xf1c) == 0x41c0) {
+    } else if ((instr & 0xf1c0) == 0x41c0) {
         return disasm_lea(node, instr, code, s);
-    } else if ((instr & 0xf1c) == 0x4180) {
+    } else if ((instr & 0xf1c0) == 0x4180) {
         return disasm_chk(node, instr, code, s);
     }
     return disasm_verbatim(node, instr, code, s);

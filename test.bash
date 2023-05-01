@@ -93,6 +93,14 @@ run_test_iterative() {
   done
 }
 
+# 4xxx lea
+#
+run_test_simple "lea (An)" "\x41\xd0"
+run_test_simple "lea (d16,An)" "\x47\xe9\x80\x00"
+run_test_simple "lea (d8,An,Xi)" "\x47\xf2\xa8\x7f"
+run_test_simple "lea (d16,PC)" "\x47\xfa\x7f\xff"
+run_test_simple "lea (d8,PC,Xi)" "\x47\xfb\xa8\x80"
+
 # 0xxx movep
 #
 run_test_simple "movepw Dn to (An)" "\x01\x0b\x00\xa0"
