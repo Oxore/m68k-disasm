@@ -93,6 +93,15 @@ run_test_iterative() {
   done
 }
 
+# bxxx eor
+#
+run_test_simple "eorb Dn, Dn" "\xb5\x01"
+run_test_expect_short "eorb Dn, An" "\xb5\x09"
+run_test_simple "eorb Dn, (An)" "\xb5\x11"
+run_test_simple "eorb Dn, (An)+" "\xb5\x19"
+run_test_simple "eorw Dn, -(An)" "\xb5\x61"
+run_test_simple "eorl Dn, (xxx).L" "\xb5\xb9\xff\xff\x00\x00"
+
 # bxxx cmp
 #
 run_test_simple "cmpb Dn, Dn" "\xb4\x01"

@@ -1434,7 +1434,6 @@ static void disasm_divu_divs_mulu_muls(
         break;
     case AddrMode::kAn:
         return disasm_verbatim(node, instr, code, s);
-        /* Fall through */
     case AddrMode::kAnAddr:
     case AddrMode::kAnAddrIncr:
     case AddrMode::kAnAddrDecr:
@@ -1517,7 +1516,6 @@ static void disasm_or_and(
         break;
     case AddrMode::kAn:
         return disasm_verbatim(node, instr, code, s);
-        /* Fall through */
     case AddrMode::kAnAddr:
     case AddrMode::kAnAddrIncr:
     case AddrMode::kAnAddrDecr:
@@ -1682,6 +1680,52 @@ static void disasm_add_sub_cmp(
     node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
+static void disasm_cmpm(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    // TODO Implement
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static void disasm_eor(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    const char suffix = suffix_from_opsize(opsize);
+    const auto addr = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    switch (addr.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        // PC relative and immediate cannot be destination
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const unsigned dn = (instr >> 9) & 7;
+    const auto reg = AddrModeArg::Dn(dn);
+    char addr_str[32]{};
+    char reg_str[32]{};
+    addr.SNPrint(addr_str, sizeof(addr_str));
+    reg.SNPrint(reg_str, sizeof(reg_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "eor%c", suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+    node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+}
+
 static void disasm_eor_cmpm_cmp_cmpa(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
 {
@@ -1693,8 +1737,11 @@ static void disasm_eor_cmpm_cmp_cmpa(
     if (!dir_to_addr) {
         return disasm_add_sub_cmp(node, instr, code, s, "cmp", opsize, dir_to_addr);
     }
-    // TODO Implement
-    return disasm_verbatim(node, instr, code, s);
+    const int m = (instr >> 3) & 7;
+    if (m == 1) {
+        return disasm_cmpm(node, instr, code, s);
+    }
+    return disasm_eor(node, instr, code, s);
 }
 
 static inline void disasm_exg(DisasmNode &node, uint16_t instr)
