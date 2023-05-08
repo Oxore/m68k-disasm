@@ -73,34 +73,34 @@ struct AddrModeArg {
         }
         return 0;
     }
-    static constexpr AddrModeArg Dn(uint8_t m, uint8_t xn)
+    static constexpr AddrModeArg Dn(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kDn, m, xn};
+        return AddrModeArg{AddrMode::kDn, 0, xn};
     }
-    static constexpr AddrModeArg An(uint8_t m, uint8_t xn)
+    static constexpr AddrModeArg An(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAn, m, xn};
+        return AddrModeArg{AddrMode::kAn, 1, xn};
     }
-    static constexpr AddrModeArg AnAddr(uint8_t m, uint8_t xn)
+    static constexpr AddrModeArg AnAddr(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAnAddr, m, xn};
+        return AddrModeArg{AddrMode::kAnAddr, 2, xn};
     }
-    static constexpr AddrModeArg AnAddrIncr(uint8_t m, uint8_t xn)
+    static constexpr AddrModeArg AnAddrIncr(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAnAddrIncr, m, xn};
+        return AddrModeArg{AddrMode::kAnAddrIncr, 3, xn};
     }
-    static constexpr AddrModeArg AnAddrDecr(uint8_t m, uint8_t xn)
+    static constexpr AddrModeArg AnAddrDecr(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAnAddrDecr, m, xn};
+        return AddrModeArg{AddrMode::kAnAddrDecr, 4, xn};
     }
-    static constexpr AddrModeArg D16AnAddr(uint8_t m, uint8_t xn, int16_t d16)
+    static constexpr AddrModeArg D16AnAddr(uint8_t xn, int16_t d16)
     {
-        return AddrModeArg{AddrMode::kD16AnAddr, m, xn, 0, 0, 0, d16};
+        return AddrModeArg{AddrMode::kD16AnAddr, 5, xn, 0, 0, 0, d16};
     }
     static constexpr AddrModeArg D8AnXiAddr(
-            uint8_t m, uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
+            uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
     {
-        return AddrModeArg{AddrMode::kD8AnXiAddr, m, xn, r, xi, s, d8};
+        return AddrModeArg{AddrMode::kD8AnXiAddr, 6, xn, r, xi, s, d8};
     }
     static constexpr AddrModeArg Word(uint8_t m, uint8_t xn, int16_t w)
     {
@@ -175,19 +175,19 @@ constexpr AddrModeArg AddrModeArg::Fetch(
     assert(s == 'b' || s == 'w' || s == 'l');
     switch (m) {
     case 0: // Dn
-        return AddrModeArg::Dn(m, xn);
+        return AddrModeArg::Dn(xn);
     case 1: // An
-        return AddrModeArg::An(m, xn);
+        return AddrModeArg::An(xn);
     case 2: // (An)
-        return AddrModeArg::AnAddr(m, xn);
+        return AddrModeArg::AnAddr(xn);
     case 3: // (An)+
-        return AddrModeArg::AnAddrIncr(m, xn);
+        return AddrModeArg::AnAddrIncr(xn);
     case 4: // -(An)
-        return AddrModeArg::AnAddrDecr(m, xn);
+        return AddrModeArg::AnAddrDecr(xn);
     case 5: // (d16, An), Additional Word
         if (offset < code.occupied_size) {
             const int16_t d16 = GetI16BE(code.buffer + offset);
-            return AddrModeArg::D16AnAddr(m, xn, d16);
+            return AddrModeArg::D16AnAddr(xn, d16);
         }
         break;
     case 6: // (d8, An, Xi), Brief Extension Word
@@ -202,7 +202,7 @@ constexpr AddrModeArg AddrModeArg::Fetch(
             const uint8_t xi = (briefext >> 12) & 7;
             const char s = ((briefext >> 11) & 1) ? 'l' : 'w';
             const int8_t d8 = briefext & 0xff;
-            return AddrModeArg::D8AnXiAddr(m, xn, r, xi, s, d8);
+            return AddrModeArg::D8AnXiAddr(xn, r, xi, s, d8);
         }
         break;
     case 7:
@@ -469,9 +469,7 @@ static void disasm_lea(
         return disasm_verbatim(node, instr, code, s);
     }
     const unsigned an = ((instr >> 9) & 7);
-    const auto reg = AddrModeArg::Fetch(
-            node.offset + kInstructionSizeStepBytes, code, 1, an, 'l');
-    assert(reg.mode == AddrMode::kAn);
+    const auto reg = AddrModeArg::An(an);
     char addr_str[32]{};
     char reg_str[32]{};
     addr.SNPrint(addr_str, sizeof(addr_str));
@@ -507,9 +505,7 @@ static void disasm_chk(
         return disasm_verbatim(node, instr, code, s);
     }
     const unsigned dn = ((instr >> 9) & 7);
-    const auto dst = AddrModeArg::Fetch(
-            node.offset + kInstructionSizeStepBytes, code, 0, dn, 'w');
-    assert(dst.mode == AddrMode::kDn);
+    const auto dst = AddrModeArg::Dn(dn);
     char src_str[32]{};
     char dst_str[32]{};
     src.SNPrint(src_str, sizeof(src_str));
@@ -624,9 +620,7 @@ static inline void disasm_movep(
         return disasm_verbatim(node, instr, code, s);
     }
     assert(addr.mode == AddrMode::kD16AnAddr);
-    const auto reg = AddrModeArg::Fetch(
-            node.offset + kInstructionSizeStepBytes, code, 0, dn, suffix);
-    assert(reg.mode == AddrMode::kDn);
+    const auto reg = AddrModeArg::Dn(dn);
     char addr_str[32]{};
     char reg_str[32]{};
     addr.SNPrint(addr_str, sizeof(addr_str));
@@ -1342,10 +1336,8 @@ static void disasm_moveq(DisasmNode &node, uint16_t instr, const DataBuffer &cod
         // Does not exist
         return disasm_verbatim(node, instr, code, s);
     }
-    const int m = 0;
     const int xn = (instr >> 9) & 7;
-    const auto dst = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, m, xn, 'w');
-    assert(dst.mode == AddrMode::kDn);
+    const auto dst = AddrModeArg::Dn(xn);
     char dst_str[32]{};
     dst.SNPrint(dst_str, sizeof(dst_str));
     snprintf(node.mnemonic, kMnemonicBufferSize, "moveq");
@@ -1385,8 +1377,37 @@ static inline void disasm_addx(
 static inline void disasm_adda(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    // TODO
-    return disasm_verbatim(node, instr, code, s);
+    const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
+    const char suffix = suffix_from_opsize(opsize);
+    assert(suffix != 'b');
+    const auto src = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    switch (src.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+    case AddrMode::kAn:
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        break;
+    }
+    const unsigned an = (instr >> 9) & 7;
+    const auto dst = AddrModeArg::An(an);
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "adda%c", suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 static void disasm_add_addx_adda(
@@ -1441,9 +1462,7 @@ static void disasm_add_addx_adda(
         break;
     }
     const unsigned dn = (instr >> 9) & 7;
-    const auto reg = AddrModeArg::Fetch(
-            node.offset + kInstructionSizeStepBytes, code, 0, dn, suffix);
-    assert(reg.mode == AddrMode::kDn);
+    const auto reg = AddrModeArg::Dn(dn);
     char addr_str[32]{};
     char reg_str[32]{};
     addr.SNPrint(addr_str, sizeof(addr_str));
