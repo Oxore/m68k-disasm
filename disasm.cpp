@@ -1375,9 +1375,86 @@ static void chunk_mf000_vc000(DisasmNode &n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_vd000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
+static inline void disasm_addx(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    return disasm_verbatim(n, i, c, s);
+    // TODO
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static inline void disasm_adda(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    // TODO
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static void disasm_add_addx_adda(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+        return disasm_adda(node, instr, code, s);
+    }
+    const unsigned dir = (instr >> 8) & 1;
+    const unsigned m = (instr >> 3) & 7;
+    if (dir == 1 && (m == 0 || m == 1)) {
+        return disasm_addx(node, instr, code, s);
+    }
+    const char suffix = suffix_from_opsize(opsize);
+    const auto addr = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    switch (addr.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        if (dir == 1 || suffix == 'b') {
+            // An cannot be destination and An cannot be used as byte
+            return disasm_verbatim(node, instr, code, s);
+        }
+        /* Fall through */
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        if (dir == 1) {
+            // PC relative and immediate cannot be destination
+            return disasm_verbatim(node, instr, code, s);
+        }
+        if (1) {
+            // XXX GNU AS always emits ADDI (06xx xxxx [xxxx]) instruction when
+            // given ADD with immediate source argument. It may become an
+            // option, but for now it is gonna be just plain bytes to keep
+            // original and reassembled binaries *identical* as it must be by
+            // default.
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    }
+    const unsigned dn = (instr >> 9) & 7;
+    const auto reg = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, 0, dn, suffix);
+    assert(reg.mode == AddrMode::kDn);
+    char addr_str[32]{};
+    char reg_str[32]{};
+    addr.SNPrint(addr_str, sizeof(addr_str));
+    reg.SNPrint(reg_str, sizeof(reg_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "add%c", suffix);
+    if (dir == 1) {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+    } else {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+    }
+    node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
 static void chunk_mf000_ve000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
@@ -1414,7 +1491,7 @@ static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Se
     case 0xc:
         return chunk_mf000_vc000(n, i, c, s);
     case 0xd:
-        return chunk_mf000_vd000(n, i, c, s);
+        return disasm_add_addx_adda(n, i, c, s);
     case 0xe:
         return chunk_mf000_ve000(n, i, c, s);
     case 0xf:

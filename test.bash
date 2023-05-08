@@ -93,6 +93,17 @@ run_test_iterative() {
   done
 }
 
+# 4xxx add
+#
+run_test_simple "addb Dn, Dn" "\xd4\x01"
+run_test_expect_short "addb An, Dn" "\xd4\x09"
+run_test_simple "addw An, Dn" "\xd4\x49"
+run_test_simple "addb (An), Dn" "\xd4\x11"
+run_test_simple "addb (An)+, Dn" "\xd4\x19"
+run_test_simple "addb -(An), Dn" "\xd4\x21"
+# GNU AS would emit ADDI for "add #imm,Xn", so we diassemble it as short
+run_test_expect_short "addl #imm, D6" "\xd6\xbc\x44\xd1\xe6\xe9"
+
 # 4xxx chkw
 #
 run_test_simple "chkw Dn" "\x47\x82"
