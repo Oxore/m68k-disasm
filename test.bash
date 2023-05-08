@@ -93,6 +93,19 @@ run_test_iterative() {
   done
 }
 
+# cxxx and
+#
+run_test_simple "andb Dn, Dn" "\xc4\x01"
+run_test_expect_short "andb An, Dn" "\xc4\x09"
+run_test_expect_short "andw An, Dn" "\xc4\x49"
+run_test_simple "andb (An), Dn" "\xc4\x11"
+run_test_simple "andb (An)+, Dn" "\xc4\x19"
+run_test_simple "andw -(An), Dn" "\xc4\x61"
+run_test_simple "andl (d8,PC,An), Dn" "\xc0\xbb\xc8\x07"
+# GNU AS would emit ANDI for "and #imm,Xn", so we diassemble it as short
+run_test_expect_short "andl #imm, D6" "\xc6\xbc\x44\xd1\xe6\xe9"
+run_test_expect_short "andl D2, D0 swapped direction" "\xc1\x42"
+
 # cxxx abcd
 #
 run_test_simple "abcd Dn, Dn" "\xc1\x01"
@@ -112,7 +125,7 @@ run_test_simple "orb (An), Dn" "\x84\x11"
 run_test_simple "orb (An)+, Dn" "\x84\x19"
 run_test_simple "orw -(An), Dn" "\x84\x61"
 run_test_simple "orl (d8,PC,An), Dn" "\x80\xbb\x88\x07"
-# GNU AS would emit ADDI for "or #imm,Xn", so we diassemble it as short
+# GNU AS would emit ORI for "or #imm,Xn", so we diassemble it as short
 run_test_expect_short "orl #imm, D6" "\x86\xbc\x44\xd1\xe6\xe9"
 run_test_expect_short "orl D2, D0 swapped direction" "\x81\x42"
 

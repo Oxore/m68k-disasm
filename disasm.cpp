@@ -1456,16 +1456,14 @@ static void disasm_addx_subx_abcd_sbcd(
     node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
-static void disasm_divu_divs_sbcd_or(
-        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static void disasm_or_and(
+        DisasmNode &node,
+        uint16_t instr,
+        const DataBuffer &code,
+        const Settings &s,
+        const OpSize opsize,
+        const char* mnemonic)
 {
-    if ((instr & 0x1f0) == 0x100) {
-        return disasm_addx_subx_abcd_sbcd(node, instr, "sbcd", "");
-    }
-    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
-    if (opsize == OpSize::kInvalid) {
-        return disasm_divu_divs(node, instr, code, s);
-    }
     const char suffix = suffix_from_opsize(opsize);
     const bool dir_to_addr = (instr >> 8) & 1;
     const auto addr = AddrModeArg::Fetch(
@@ -1503,11 +1501,12 @@ static void disasm_divu_divs_sbcd_or(
             return disasm_verbatim(node, instr, code, s);
         }
         if (1) {
-            // XXX GNU AS always emits ORI (04xx xxxx [xxxx]) instruction when
-            // given OR with immediate source argument. It may become an
-            // option like -fpedantic to generate instruction in this case, but
-            // for now it is gonna be just plain bytes to keep original and
-            // reassembled binaries *identical* as it must be by default.
+            // XXX GNU AS always emits ORI (04xx xxxx [xxxx]) or ANDI (02xx
+            // xxxx [xxxx]) instruction when given OR or AND correspondingly
+            // with immediate source argument. It may become an option like
+            // -fpedantic to generate instruction in this case, but for now it
+            // is gonna be just plain bytes to keep original and reassembled
+            // binaries *identical* as it must be by default.
             return disasm_verbatim(node, instr, code, s);
         }
         break;
@@ -1518,7 +1517,7 @@ static void disasm_divu_divs_sbcd_or(
     char reg_str[32]{};
     addr.SNPrint(addr_str, sizeof(addr_str));
     reg.SNPrint(reg_str, sizeof(reg_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", "or", suffix);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
     if (dir_to_addr) {
         snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
     } else {
@@ -1527,10 +1526,37 @@ static void disasm_divu_divs_sbcd_or(
     node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
+static void disasm_divu_divs_sbcd_or(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    if ((instr & 0x1f0) == 0x100) {
+        return disasm_addx_subx_abcd_sbcd(node, instr, "sbcd", "");
+    }
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+        return disasm_divu_divs(node, instr, code, s);
+    }
+    return disasm_or_and(node, instr, code, s, opsize, "or");
+}
+
 static void disasm_chunk_b(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     // TODO Implement
     return disasm_verbatim(n, i, c, s);
+}
+
+static void disasm_mulu_muls(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    // TODO Implement
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static void disasm_exg(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    // TODO Implement
+    return disasm_verbatim(node, instr, code, s);
 }
 
 static void disasm_chunk_c(
@@ -1543,8 +1569,15 @@ static void disasm_chunk_c(
         const bool skip_size_suffix = true;
         return disasm_addx_subx_abcd_sbcd(node, instr, "abcd", "", skip_size_suffix);
     }
-    // TODO Implement
-    return disasm_verbatim(node, instr, code, s);
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+        return disasm_mulu_muls(node, instr, code, s);
+    }
+    const unsigned m_split = instr & 0x1f8;
+    if (m_split == 0x188 || m_split == 0x148 || m_split == 0x140) {
+        return disasm_exg(node, instr, code, s);
+    }
+    return disasm_or_and(node, instr, code, s, opsize, "and");
 }
 
 static inline void disasm_adda_suba(
