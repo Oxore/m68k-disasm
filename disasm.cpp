@@ -720,7 +720,7 @@ static void disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c, 
     return disasm_src_arg_bitops_movep(n, i, c, s, false);
 }
 
-static inline void disasm_logical_imm_to(
+static inline void disasm_logical_immediate_to(
         DisasmNode &node, const char* mnemonic, const char suffix, const int16_t imm)
 {
     const char *reg = suffix == 'b' ? "ccr" : "sr";
@@ -729,7 +729,7 @@ static inline void disasm_logical_imm_to(
     node.size = kInstructionSizeStepBytes * 2;
 }
 
-static inline const char *mnemonic_for_chunk_mf000_v1000(const unsigned opcode)
+static inline const char *mnemonic_logical_immediate(const unsigned opcode)
 {
     switch (opcode) {
     case 0: return "ori";
@@ -745,7 +745,7 @@ static inline const char *mnemonic_for_chunk_mf000_v1000(const unsigned opcode)
     return "?";
 }
 
-static void chunk_mf000_v0000(
+static void disasm_bitops_movep(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const bool has_source_reg = (instr >> 8) & 1;
@@ -786,9 +786,9 @@ static void chunk_mf000_v0000(
         return disasm_verbatim(node, instr, code, s);
     }
     assert(src.mode == AddrMode::kImmediate);
-    const char *mnemonic = mnemonic_for_chunk_mf000_v1000(opcode);
+    const char *mnemonic = mnemonic_logical_immediate(opcode);
     if (m == 7 && xn == 4) {
-        return disasm_logical_imm_to(node, mnemonic, suffix, src.value);
+        return disasm_logical_immediate_to(node, mnemonic, suffix, src.value);
     }
     const auto dst = AddrModeArg::Fetch(
             node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, suffix);
@@ -940,7 +940,7 @@ static void disasm_move_to(
     node.size = kInstructionSizeStepBytes + src.Size();
 }
 
-static inline const char *mnemonic_for_chunk_mf800_v4000(const unsigned opcode)
+static inline const char *mnemonic_for_negx_clr_neg_not(const unsigned opcode)
 {
     switch (opcode) {
     case 0: return "negx";
@@ -952,7 +952,7 @@ static inline const char *mnemonic_for_chunk_mf800_v4000(const unsigned opcode)
     return "?";
 }
 
-static void chunk_mf900_v4000(
+static void disasm_negx_clr_neg_not(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
@@ -971,7 +971,7 @@ static void chunk_mf900_v4000(
         assert(false);
         return disasm_verbatim(node, instr, code, s);
     }
-    const char *mnemonic = mnemonic_for_chunk_mf800_v4000(opcode);
+    const char *mnemonic = mnemonic_for_negx_clr_neg_not(opcode);
     const char suffix = suffix_from_opsize(opsize);
     const auto a = AddrModeArg::Fetch(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
@@ -1141,11 +1141,11 @@ static void disasm_move_usp(
     }
 }
 
-static void chunk_mf000_v4000(
+static void disasm_chunk_4(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if ((instr & 0xf900) == 0x4000) {
-        return chunk_mf900_v4000(node, instr, code, s);
+        return disasm_negx_clr_neg_not(node, instr, code, s);
     } else if ((instr & 0xff00) == 0x4a00) {
         return disasm_tst_tas_illegal(node, instr, code, s);
     } else if ((instr & 0xfff0) == 0x4e40) {
@@ -1333,7 +1333,7 @@ static void disasm_scc_dbcc(
     a.SNPrint(node.arguments, kArgsBufferSize);
 }
 
-static void chunk_mf000_v5000(DisasmNode &n, uint16_t instr, const DataBuffer &c, const Settings &s)
+static void disasm_addq_subq_scc_dbcc(DisasmNode &n, uint16_t instr, const DataBuffer &c, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
@@ -1578,15 +1578,15 @@ static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Se
 {
     switch ((i & 0xf000) >> 12) {
     case 0x0:
-        return chunk_mf000_v0000(n, i, c, s);
+        return disasm_bitops_movep(n, i, c, s);
     case 0x1:
     case 0x2:
     case 0x3:
         return disasm_move_movea(n, i, c, s);
     case 0x4:
-        return chunk_mf000_v4000(n, i, c, s);
+        return disasm_chunk_4(n, i, c, s);
     case 0x5:
-        return chunk_mf000_v5000(n, i, c, s);
+        return disasm_addq_subq_scc_dbcc(n, i, c, s);
     case 0x6:
         return disasm_bra_bsr_bcc(n, i, c, s);
     case 0x7:
