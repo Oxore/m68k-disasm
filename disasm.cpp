@@ -1324,7 +1324,8 @@ static void disasm_dbcc(DisasmNode &node, uint16_t instr, const DataBuffer &code
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     const char *mnemonic = dbcc_mnemonic_by_condition(condition);
     const int dn = (instr & 7);
-    const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt_raw);
+    const uint32_t branch_addr = static_cast<uint32_t>(
+            node.offset + dispmt_raw + kInstructionSizeStepBytes);
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
     const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
