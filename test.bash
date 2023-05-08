@@ -93,6 +93,34 @@ run_test_iterative() {
   done
 }
 
+# 9xxx subx
+#
+run_test_simple "subxb Dn, Dn" "\x91\x00"
+run_test_simple "subxw Dn, Dn" "\x93\x47"
+run_test_simple "subxl Dn, Dn" "\x95\x86"
+run_test_simple "subxb -(An), -(An)" "\x91\x08"
+run_test_simple "subxw -(An), -(An)" "\x93\x4f"
+run_test_simple "subxl -(An), -(An)" "\x95\x8e"
+
+# 9xxx suba
+#
+run_test_simple "subaw Dn, An" "\x94\xc1"
+run_test_simple "subal An, An" "\x9b\xca"
+run_test_simple "subaw (An)+, An" "\x9a\xda"
+run_test_simple "subaw #imm, An" "\x9a\xfc\x01\x00"
+run_test_simple "subal #imm, An" "\x9b\xfc\x80\x00\x00\x00"
+
+# 9xxx sub
+#
+run_test_simple "subb Dn, Dn" "\x94\x01"
+run_test_expect_short "subb An, Dn" "\x94\x09"
+run_test_simple "subw An, Dn" "\x94\x49"
+run_test_simple "subb (An), Dn" "\x94\x11"
+run_test_simple "subb (An)+, Dn" "\x94\x19"
+run_test_simple "subb -(An), Dn" "\x94\x21"
+# GNU AS would emit SUBQ for "sub #imm,Xn", so we diassemble it as short
+run_test_expect_short "subl #imm, D6" "\x96\xbc\x44\xd1\xe6\xe9"
+
 # dxxx addx
 #
 run_test_simple "addxb Dn, Dn" "\xd1\x00"
@@ -106,7 +134,7 @@ run_test_simple "addxl -(An), -(An)" "\xd5\x8e"
 #
 run_test_simple "addaw Dn, An" "\xd4\xc1"
 run_test_simple "addal An, An" "\xdb\xca"
-run_test_simple "addaw (An)+, An" "\xdb\xda"
+run_test_simple "addaw (An)+, An" "\xda\xda"
 run_test_simple "addaw #imm, An" "\xda\xfc\x01\x00"
 run_test_simple "addal #imm, An" "\xdb\xfc\x80\x00\x00\x00"
 

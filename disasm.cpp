@@ -1352,11 +1352,6 @@ static void chunk_mf000_v8000(DisasmNode &n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_v9000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
-    return disasm_verbatim(n, i, c, s);
-}
-
 static void chunk_mf000_vb000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
     return disasm_verbatim(n, i, c, s);
@@ -1367,11 +1362,11 @@ static void chunk_mf000_vc000(DisasmNode &n, uint16_t i, const DataBuffer &c, co
     return disasm_verbatim(n, i, c, s);
 }
 
-static inline void disasm_addx(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &, const Settings &)
+static inline void disasm_addx_subx(
+        DisasmNode &node, const uint16_t instr, const char * mnemonic)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
-    // Already handled by parent call of `disasm_add_addx_adda`
+    // Already handled by parent call of `disasm_add_sub_x_a`
     assert(opsize != OpSize::kInvalid);
     const int m = (instr >> 3) & 1;
     const int xn = instr & 7;
@@ -1382,13 +1377,13 @@ static inline void disasm_addx(
     char dst_str[32]{};
     src.SNPrint(src_str, sizeof(src_str));
     dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "addx%c", suffix_from_opsize(opsize));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%sx%c", mnemonic, suffix_from_opsize(opsize));
     snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
     node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
-static inline void disasm_adda(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+static inline void disasm_adda_suba(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s, const char *mnemonic)
 {
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
     const char suffix = suffix_from_opsize(opsize);
@@ -1418,22 +1413,22 @@ static inline void disasm_adda(
     char dst_str[32]{};
     src.SNPrint(src_str, sizeof(src_str));
     dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "adda%c", suffix);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%sa%c", mnemonic, suffix);
     snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
     node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
-static void disasm_add_addx_adda(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+static void disasm_add_sub_x_a(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s, const char *mnemonic)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_adda(node, instr, code, s);
+        return disasm_adda_suba(node, instr, code, s, mnemonic);
     }
     const unsigned dir = (instr >> 8) & 1;
     const unsigned m = (instr >> 3) & 7;
     if (dir == 1 && (m == 0 || m == 1)) {
-        return disasm_addx(node, instr, code, s);
+        return disasm_addx_subx(node, instr, mnemonic);
     }
     const char suffix = suffix_from_opsize(opsize);
     const auto addr = AddrModeArg::Fetch(
@@ -1466,10 +1461,11 @@ static void disasm_add_addx_adda(
         }
         if (1) {
             // XXX GNU AS always emits ADDI (06xx xxxx [xxxx]) instruction when
-            // given ADD with immediate source argument. It may become an
-            // option, but for now it is gonna be just plain bytes to keep
-            // original and reassembled binaries *identical* as it must be by
-            // default.
+            // given ADD with immediate source argument. It also emits SUBQ when
+            // given SUB with immediate source argument. It may become an
+            // option like -fpedantic to generate instruction in this case, but
+            // for now it is gonna be just plain bytes to keep original and
+            // reassembled binaries *identical* as it must be by default.
             return disasm_verbatim(node, instr, code, s);
         }
         break;
@@ -1480,7 +1476,7 @@ static void disasm_add_addx_adda(
     char reg_str[32]{};
     addr.SNPrint(addr_str, sizeof(addr_str));
     reg.SNPrint(reg_str, sizeof(reg_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "add%c", suffix);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
     if (dir == 1) {
         snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
     } else {
@@ -1514,7 +1510,7 @@ static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Se
     case 0x8:
         return chunk_mf000_v8000(n, i, c, s);
     case 0x9:
-        return chunk_mf000_v9000(n, i, c, s);
+        return disasm_add_sub_x_a(n, i, c, s, "sub");
     case 0xa:
         // Does not exist
         return disasm_verbatim(n, i, c, s);
@@ -1523,7 +1519,7 @@ static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Se
     case 0xc:
         return chunk_mf000_vc000(n, i, c, s);
     case 0xd:
-        return disasm_add_addx_adda(n, i, c, s);
+        return disasm_add_sub_x_a(n, i, c, s, "add");
     case 0xe:
         return chunk_mf000_ve000(n, i, c, s);
     case 0xf:
