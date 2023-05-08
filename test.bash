@@ -93,10 +93,15 @@ run_test_iterative() {
   done
 }
 
+# bxxx cmpm
+#
+run_test_simple "cmpmb (An)+, (An)+" "\xb1\x08"
+run_test_simple "cmpmw (An)+, (An)+" "\xb1\x48"
+run_test_simple "cmpml (An)+, (An)+" "\xb1\x88"
+
 # bxxx eor
 #
 run_test_simple "eorb Dn, Dn" "\xb5\x01"
-run_test_expect_short "eorb Dn, An" "\xb5\x09"
 run_test_simple "eorb Dn, (An)" "\xb5\x11"
 run_test_simple "eorb Dn, (An)+" "\xb5\x19"
 run_test_simple "eorw Dn, -(An)" "\xb5\x61"

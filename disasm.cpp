@@ -1681,10 +1681,26 @@ static void disasm_add_sub_cmp(
 }
 
 static void disasm_cmpm(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+        DisasmNode &node, const uint16_t instr, const DataBuffer &, const Settings &)
 {
-    // TODO Implement
-    return disasm_verbatim(node, instr, code, s);
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    // Must be already handled by parent call
+    assert(opsize != OpSize::kInvalid);
+    const int m = (instr >> 3) & 3;
+    assert(m == 1);
+    (void) m;
+    const int xn = instr & 7;
+    const int xi = (instr >> 9) & 7;
+    const auto src = AddrModeArg::AnAddrIncr(xn);
+    const auto dst = AddrModeArg::AnAddrIncr(xi);
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    const char suffix = suffix_from_opsize(opsize);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "cmpm%c", suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 static void disasm_eor(
