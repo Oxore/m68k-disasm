@@ -17,6 +17,18 @@ enum class MoveDirection: bool {
     kMemoryToRegister = 1,
 };
 
+enum class ShiftDirection: bool {
+    kRight = 0,
+    kLeft = 1,
+};
+
+enum class ShiftKind: int {
+    kArithmeticShift = 0,
+    kLogicalShift = 1,
+    kRotateX = 2,
+    kRotate = 3,
+};
+
 enum class OpSize: int {
     kByte = 0,
     kWord = 1,
@@ -273,9 +285,9 @@ static char suffix_from_opsize(OpSize opsize)
     case OpSize::kByte: return 'b';
     case OpSize::kWord: return 'w';
     case OpSize::kLong: return 'l';
-    case OpSize::kInvalid: return 'l';
+    case OpSize::kInvalid: return 'w';
     }
-    return 'l';
+    return 'w';
 }
 
 static inline size_t snprint_reg_mask(
@@ -1485,9 +1497,81 @@ static void disasm_add_sub_x_a(
     node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
-static void chunk_mf000_ve000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
+static inline const char *ShiftKindToMnemonic(const ShiftKind k)
 {
-    return disasm_verbatim(n, i, c, s);
+    switch (k) {
+    case ShiftKind::kArithmeticShift: return "as";
+    case ShiftKind::kLogicalShift: return "ls";
+    case ShiftKind::kRotateX: return "rox";
+    case ShiftKind::kRotate: return "ro";
+    }
+    assert(false);
+    return "?";
+}
+
+static inline bool IsValidShiftKind(const ShiftKind k)
+{
+    return static_cast<int>(k) < 4;
+}
+
+static void disasm_shift_rotate(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    const unsigned xn = instr & 7;
+    const uint8_t rotation = (instr >> 9) & 7;
+    const ShiftKind kind = (opsize == OpSize::kInvalid)
+        ? static_cast<ShiftKind>(rotation)
+        : static_cast<ShiftKind>((instr >> 3) & 3);
+    if (!IsValidShiftKind(kind)) {
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const unsigned m = (instr >> 5) & 1;
+    const char suffix = suffix_from_opsize(opsize);
+    const auto dst = (opsize == OpSize::kInvalid)
+        ? AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, suffix)
+        : AddrModeArg::Dn(xn);
+    if (opsize == OpSize::kInvalid) {
+        switch (dst.mode) {
+        case AddrMode::kInvalid:
+            return disasm_verbatim(node, instr, code, s);
+        case AddrMode::kDn:
+            // Intersects with situation when args are "#1,%dx". GNU AS would
+            // not understand shift instruction with single argument of "%dx".
+            return disasm_verbatim(node, instr, code, s);
+            break;
+        case AddrMode::kAn:
+            return disasm_verbatim(node, instr, code, s);
+        case AddrMode::kAnAddr:
+        case AddrMode::kAnAddrIncr:
+        case AddrMode::kAnAddrDecr:
+        case AddrMode::kD16AnAddr:
+        case AddrMode::kD8AnXiAddr:
+        case AddrMode::kWord:
+        case AddrMode::kLong:
+            break;
+        case AddrMode::kD16PCAddr:
+        case AddrMode::kD8PCXiAddr:
+        case AddrMode::kImmediate:
+            return disasm_verbatim(node, instr, code, s);
+        }
+    }
+    const unsigned imm = ((rotation - 1) & 7) + 1;
+    const unsigned src = (opsize == OpSize::kInvalid) ? 1 : rotation;
+    const auto dir = static_cast<ShiftDirection>((instr >> 8) & 1);
+    char dst_str[32]{};
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    const char *mnemonic = ShiftKindToMnemonic(kind);
+    const char dirchar = (dir == ShiftDirection::kRight) ? 'r' : 'l';
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c%c", mnemonic, dirchar, suffix);
+    if (opsize == OpSize::kInvalid) {
+        snprintf(node.arguments, kArgsBufferSize, "%s", dst_str);
+    } else if (m == 1) {
+        snprintf(node.arguments, kArgsBufferSize, "%%d%u,%s", src, dst_str);
+    } else {
+        snprintf(node.arguments, kArgsBufferSize, "#%u,%s", imm, dst_str);
+    }
+    node.size = kInstructionSizeStepBytes + dst.Size();
 }
 
 static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
@@ -1521,7 +1605,7 @@ static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Se
     case 0xd:
         return disasm_add_sub_x_a(n, i, c, s, "add");
     case 0xe:
-        return chunk_mf000_ve000(n, i, c, s);
+        return disasm_shift_rotate(n, i, c, s);
     case 0xf:
         // Does not exist
         return disasm_verbatim(n, i, c, s);

@@ -93,6 +93,23 @@ run_test_iterative() {
   done
 }
 
+# exxx asl, asr, lsl, lsr, roxl, roxr, rol, ror
+#
+run_test_simple "asrb Dn, Dn" "\xe2\x22"
+run_test_simple "asrb #1, Dn" "\xe2\x02"
+run_test_simple "asrb #8, Dn" "\xe0\x02"
+run_test_simple "aslb #7, Dn" "\xef\x02"
+run_test_simple "asrw Dn, Dn" "\xe2\x62"
+run_test_simple "asrl Dn, Dn" "\xe2\xa2"
+run_test_simple "aslw #6, Dn" "\xed\x43"
+run_test_simple "asll #5, Dn" "\xeb\x83"
+run_test_simple "asrw (An)" "\xe0\xd0"
+run_test_simple "lsrw (An)+" "\xe2\xd8"
+run_test_simple "roxrw -(An)" "\xe4\xe0"
+run_test_simple "rorw (d16,An)" "\xe6\xef\x01\x00"
+# Found on random tests
+run_test_simple "lsrb D1,D4" "\xe2\x2c"
+
 # 9xxx subx
 #
 run_test_simple "subxb Dn, Dn" "\x91\x00"
