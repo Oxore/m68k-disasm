@@ -1417,11 +1417,49 @@ static void disasm_moveq(DisasmNode &node, uint16_t instr, const DataBuffer &cod
 
 }
 
-static void disasm_divu_divs(
-        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static void disasm_divu_divs_mulu_muls(
+        DisasmNode &node,
+        uint16_t instr,
+        const DataBuffer &code,
+        const Settings &s,
+        const char *mnemonic)
 {
-    // TODO Implement
-    return disasm_verbatim(node, instr, code, s);
+    const char suffix = 'w';
+    const auto src = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    switch (src.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+        /* Fall through */
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        break;
+    }
+    const unsigned dn = (instr >> 9) & 7;
+    const auto dst = AddrModeArg::Dn(dn);
+    char dst_str[32]{};
+    char src_str[32]{};
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    src.SNPrint(src_str, sizeof(src_str));
+    const bool is_signed = (instr >> 8) & 1;
+    const char sign_suffix = is_signed ? 's' : 'u';
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c%c", mnemonic, sign_suffix, suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + dst.Size() + src.Size();
+
 }
 
 static void disasm_addx_subx_abcd_sbcd(
@@ -1534,7 +1572,7 @@ static void disasm_divu_divs_sbcd_or(
     }
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_divu_divs(node, instr, code, s);
+        return disasm_divu_divs_mulu_muls(node, instr, code, s, "div");
     }
     return disasm_or_and(node, instr, code, s, opsize, "or");
 }
@@ -1543,13 +1581,6 @@ static void disasm_chunk_b(DisasmNode &n, uint16_t i, const DataBuffer &c, const
 {
     // TODO Implement
     return disasm_verbatim(n, i, c, s);
-}
-
-static void disasm_mulu_muls(
-        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
-{
-    // TODO Implement
-    return disasm_verbatim(node, instr, code, s);
 }
 
 static inline void disasm_exg(DisasmNode &node, uint16_t instr)
@@ -1586,7 +1617,7 @@ static void disasm_chunk_c(
     }
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_mulu_muls(node, instr, code, s);
+        return disasm_divu_divs_mulu_muls(node, instr, code, s, "mul");
     }
     const unsigned m_split = instr & 0x1f8;
     if (m_split == 0x188 || m_split == 0x148 || m_split == 0x140) {

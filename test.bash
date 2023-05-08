@@ -93,6 +93,34 @@ run_test_iterative() {
   done
 }
 
+# cxxx divu divs
+#
+run_test_simple "divuw Dn, Dn" "\x82\xc6"
+run_test_simple "divsw (An), Dn" "\x83\xd6"
+run_test_simple "divuw (An)+, Dn" "\x82\xde"
+run_test_simple "divsw -(An), Dn" "\x83\xe6"
+run_test_simple "divuw (d16,An), Dn" "\x82\xee\xa0\x00"
+run_test_simple "divsw (d8,An,Dn:l), Dn" "\x83\xf6\x68\xf0"
+run_test_simple "divuw (xxx).W, Dn" "\x82\xf8\x30\x00"
+run_test_simple "divsw (xxx).L, Dn" "\x83\xf9\x80\x00\x00\x00"
+run_test_simple "divuw (d16,PC), Dn" "\x82\xfa\xff\xff"
+run_test_simple "divsw (d8,PC,An:w), Dn" "\x83\xfb\x90\xff"
+run_test_simple "divuw #imm, Dn" "\x82\xfc\x30\x00"
+
+# cxxx mulu muls
+#
+run_test_simple "muluw Dn, Dn" "\xc2\xc6"
+run_test_simple "mulsw (An), Dn" "\xc3\xd6"
+run_test_simple "muluw (An)+, Dn" "\xc2\xde"
+run_test_simple "mulsw -(An), Dn" "\xc3\xe6"
+run_test_simple "muluw (d16,An), Dn" "\xc2\xee\xa0\x00"
+run_test_simple "mulsw (d8,An,Dn:l), Dn" "\xc3\xf6\x68\xf0"
+run_test_simple "muluw (xxx).W, Dn" "\xc2\xf8\x30\x00"
+run_test_simple "mulsw (xxx).L, Dn" "\xc3\xf9\x80\x00\x00\x00"
+run_test_simple "muluw (d16,PC), Dn" "\xc2\xfa\xff\xff"
+run_test_simple "mulsw (d8,PC,An:w), Dn" "\xc3\xfb\x90\xff"
+run_test_simple "muluw #imm, Dn" "\xc2\xfc\x30\x00"
+
 # cxxx exg
 #
 run_test_simple "exg Dn, Dn" "\xcd\x41"
