@@ -93,6 +93,22 @@ run_test_iterative() {
   done
 }
 
+# 48xx nbcd swap pea
+#
+run_test_simple "swapw Dn" "\x48\x47"
+run_test_simple "swapw Dn" "\x48\x42"
+run_test_simple "peal (An)" "\x48\x50"
+run_test_simple "peal (d16,An)" "\x48\x68\x80\x00"
+run_test_simple "peal (d8,An,An)" "\x48\x77\x90\xfe"
+run_test_simple "peal (d16,PC)" "\x48\x7a\x7f\xff"
+run_test_simple "peal (d8,PC,Dn)" "\x48\x7b\x68\xfe"
+run_test_simple "nbcdb Dn" "\x48\x03"
+run_test_simple "nbcdb (An)" "\x48\x14"
+run_test_simple "nbcdb (An)+" "\x48\x1c"
+run_test_simple "nbcdb -(An)" "\x48\x25"
+run_test_simple "nbcdb (d16,An)" "\x48\x28\x80\x00"
+run_test_simple "nbcdb (d8,An,An)" "\x48\x37\x90\xfe"
+
 # 48xx ext
 #
 run_test_simple "extw %d7" "\x48\x87"

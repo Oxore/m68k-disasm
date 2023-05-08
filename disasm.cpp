@@ -1011,10 +1011,8 @@ static void disasm_move_negx_clr_neg_not(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr, code, s);
     }
-    char a_str[32]{};
-    a.SNPrint(a_str, sizeof(a_str));
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-    snprintf(node.arguments, kArgsBufferSize, "%s", a_str);
+    a.SNPrint(node.arguments, kArgsBufferSize);
     node.size = kInstructionSizeStepBytes + a.Size();
 }
 
@@ -1049,10 +1047,8 @@ static inline void disasm_tas(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr, code, s);
     }
-    char a_str[32]{};
-    a.SNPrint(a_str, sizeof(a_str));
     snprintf(node.mnemonic, kMnemonicBufferSize, "tas");
-    snprintf(node.arguments, kArgsBufferSize, "%s", a_str);
+    a.SNPrint(node.arguments, kArgsBufferSize);
     node.size = kInstructionSizeStepBytes + a.Size();
 }
 
@@ -1090,10 +1086,8 @@ static void disasm_tst_tas_illegal(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr, code, s);
     }
-    char a_str[32]{};
-    a.SNPrint(a_str, sizeof(a_str));
     snprintf(node.mnemonic, kMnemonicBufferSize, "tst%c", suffix);
-    snprintf(node.arguments, kArgsBufferSize, "%s", a_str);
+    a.SNPrint(node.arguments, kArgsBufferSize);
     node.size = kInstructionSizeStepBytes + a.Size();
 }
 
@@ -1160,7 +1154,46 @@ static void disasm_move_usp(
 static void disasm_nbcd_swap_pea(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    return disasm_verbatim(node, instr, code, s);
+    const bool is_nbcd = !((instr >> 6) & 1);
+    const auto arg = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, 'w');
+    bool is_swap{};
+    switch (arg.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        if (!is_nbcd) {
+            is_swap = true;
+        }
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kAnAddr:
+        break;
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+        if (!is_nbcd) {
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+        if (is_nbcd) {
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kImmediate:
+        return disasm_verbatim(node, instr, code, s);
+    }
+    const char *mnemonic = is_nbcd ? "nbcdb" : is_swap ? "swapw" : "peal";
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
+    arg.SNPrint(node.arguments, kArgsBufferSize);
+    node.size = kInstructionSizeStepBytes + arg.Size();
 }
 
 static void disasm_chunk_4(
