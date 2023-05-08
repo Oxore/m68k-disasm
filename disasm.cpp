@@ -1552,11 +1552,26 @@ static void disasm_mulu_muls(
     return disasm_verbatim(node, instr, code, s);
 }
 
-static void disasm_exg(
-        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static inline void disasm_exg(DisasmNode &node, uint16_t instr)
 {
-    // TODO Implement
-    return disasm_verbatim(node, instr, code, s);
+    assert((instr & 0x130) == 0x100);
+    const int m1 = (instr >> 3) & 1;
+    const int m2 = (instr >> 6) & 3;
+    assert(m2 != 0); // Therefore m == 0 and m == 1 are impossible
+    assert(m2 != 3); // Therefore m == 6 and m == 7 are impossible
+    const int m = (m2 << 1) | m1;
+    assert(m != 4); // Only m == 2, m == 3 and m == 5 values are allowed
+    const int xn = instr & 7;
+    const int xi = (instr >> 9) & 7;
+    const auto src = (m == 3) ? AddrModeArg::An(xi) : AddrModeArg::Dn(xi);
+    const auto dst = (m == 2) ? AddrModeArg::Dn(xn) : AddrModeArg::An(xn);
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "exg");
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 static void disasm_chunk_c(
@@ -1575,7 +1590,7 @@ static void disasm_chunk_c(
     }
     const unsigned m_split = instr & 0x1f8;
     if (m_split == 0x188 || m_split == 0x148 || m_split == 0x140) {
-        return disasm_exg(node, instr, code, s);
+        return disasm_exg(node, instr);
     }
     return disasm_or_and(node, instr, code, s, opsize, "and");
 }

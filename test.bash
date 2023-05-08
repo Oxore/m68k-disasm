@@ -93,6 +93,12 @@ run_test_iterative() {
   done
 }
 
+# cxxx exg
+#
+run_test_simple "exg Dn, Dn" "\xcd\x41"
+run_test_simple "exg Dn, An" "\xcd\x89"
+run_test_simple "exg An, An" "\xcd\x49"
+
 # cxxx and
 #
 run_test_simple "andb Dn, Dn" "\xc4\x01"
@@ -104,7 +110,6 @@ run_test_simple "andw -(An), Dn" "\xc4\x61"
 run_test_simple "andl (d8,PC,An), Dn" "\xc0\xbb\xc8\x07"
 # GNU AS would emit ANDI for "and #imm,Xn", so we diassemble it as short
 run_test_expect_short "andl #imm, D6" "\xc6\xbc\x44\xd1\xe6\xe9"
-run_test_expect_short "andl D2, D0 swapped direction" "\xc1\x42"
 
 # cxxx abcd
 #
