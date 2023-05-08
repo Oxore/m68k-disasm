@@ -1424,8 +1424,12 @@ static void disasm_divu_divs(
     return disasm_verbatim(node, instr, code, s);
 }
 
-static void disasm_addx_subx_sbcd(
-        DisasmNode &node, const uint16_t instr, const char *mnemonic, const char *msuffix)
+static void disasm_addx_subx_abcd_sbcd(
+        DisasmNode &node,
+        const uint16_t instr,
+        const char *mnemonic,
+        const char *msuffix,
+        const bool skip_suffix = false)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     // Must be already handled by parent call
@@ -1440,7 +1444,14 @@ static void disasm_addx_subx_sbcd(
     src.SNPrint(src_str, sizeof(src_str));
     dst.SNPrint(dst_str, sizeof(dst_str));
     const char suffix = suffix_from_opsize(opsize);
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s%c", mnemonic, msuffix, suffix);
+    if (skip_suffix) {
+        // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily
+        // consumes SBCD.B and others. That's why `skip_suffix` flag is needed,
+        // specifically for ABCD mnemonic. It is probably a bug in GNU AS.
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s", mnemonic, msuffix);
+    } else {
+        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s%c", mnemonic, msuffix, suffix);
+    }
     snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
     node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
@@ -1449,7 +1460,7 @@ static void disasm_divu_divs_sbcd_or(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if ((instr & 0x1f0) == 0x100) {
-        return disasm_addx_subx_sbcd(node, instr, "sbcd", "");
+        return disasm_addx_subx_abcd_sbcd(node, instr, "sbcd", "");
     }
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
@@ -1522,10 +1533,18 @@ static void disasm_chunk_b(DisasmNode &n, uint16_t i, const DataBuffer &c, const
     return disasm_verbatim(n, i, c, s);
 }
 
-static void disasm_chunk_c(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void disasm_chunk_c(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
+    if ((instr & 0x1f0) == 0x100) {
+        // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily
+        // consumes SBCD.B and others. That's why `skip_suffix` flag is needed,
+        // specifically for ABCD mnemonic. It is probably a bug in GNU AS.
+        const bool skip_size_suffix = true;
+        return disasm_addx_subx_abcd_sbcd(node, instr, "abcd", "", skip_size_suffix);
+    }
     // TODO Implement
-    return disasm_verbatim(n, i, c, s);
+    return disasm_verbatim(node, instr, code, s);
 }
 
 static inline void disasm_adda_suba(
@@ -1574,7 +1593,7 @@ static void disasm_add_sub_x_a(
     const bool dir_to_addr = (instr >> 8) & 1;
     const unsigned m = (instr >> 3) & 7;
     if (dir_to_addr && (m == 0 || m == 1)) {
-        return disasm_addx_subx_sbcd(node, instr, mnemonic, "x");
+        return disasm_addx_subx_abcd_sbcd(node, instr, mnemonic, "x");
     }
     const char suffix = suffix_from_opsize(opsize);
     const auto addr = AddrModeArg::Fetch(

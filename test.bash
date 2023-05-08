@@ -93,10 +93,15 @@ run_test_iterative() {
   done
 }
 
+# cxxx abcd
+#
+run_test_simple "abcd Dn, Dn" "\xc1\x01"
+run_test_simple "abcd -(An), -(An)" "\xc1\x09"
+
 # 8xxx sbcd
 #
 run_test_simple "sbcdb Dn, Dn" "\x81\x01"
-run_test_simple "sbcdb -(An), -(An)" "\x81\x01"
+run_test_simple "sbcdb -(An), -(An)" "\x81\x09"
 
 # 8xxx or
 #
