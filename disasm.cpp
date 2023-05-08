@@ -394,11 +394,30 @@ static void disasm_jsr_jmp(
     (void) ret;
 }
 
-static void disasm_movem(
+static void disasm_ext(
+        DisasmNode &node,
+        const char suffix,
+        const AddrModeArg arg)
+{
+    assert(arg.mode == AddrMode::kDn);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "ext%c", suffix);
+    arg.SNPrint(node.arguments, kArgsBufferSize);
+    node.size = kInstructionSizeStepBytes + arg.Size();
+}
+
+static void disasm_ext_movem(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
+    const auto dir = static_cast<MoveDirection>((instr >> 10) & 1);
+    const unsigned m = (instr >> 3) & 7;
+    const unsigned xn = instr & 7;
+    const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
+    const char suffix = suffix_from_opsize(opsize);
+    if (m == 0 && dir == MoveDirection::kRegisterToMemory) {
+        return disasm_ext(node, suffix, AddrModeArg::Dn(xn));
+    }
     if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
-        // Not enough space for regmask
+        // Not enough space for regmask, but maybe it is just EXT?
         return disasm_verbatim(node, instr, code, s);
     }
     const unsigned regmask = GetU16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
@@ -406,11 +425,8 @@ static void disasm_movem(
         // This is just not representable: at least one register must be specified
         return disasm_verbatim(node, instr, code, s);
     }
-    const auto dir = static_cast<MoveDirection>((instr >> 10) & 1);
-    const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
-    const char suffix = suffix_from_opsize(opsize);
     const auto a = AddrModeArg::Fetch(
-            node.offset + kInstructionSizeStepBytes * 2, code, instr, suffix);
+            node.offset + kInstructionSizeStepBytes * 2, code, m, xn, suffix);
     switch (a.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn: // 4880..4887 / 4c80..4c87 / 48c0..48c7 / 4cc0..4cc7
@@ -952,7 +968,7 @@ static inline const char *mnemonic_for_negx_clr_neg_not(const unsigned opcode)
     return "?";
 }
 
-static void disasm_negx_clr_neg_not(
+static void disasm_move_negx_clr_neg_not(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
@@ -1141,11 +1157,20 @@ static void disasm_move_usp(
     }
 }
 
+static void disasm_nbcd_swap_pea(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    return disasm_verbatim(node, instr, code, s);
+}
+
 static void disasm_chunk_4(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if ((instr & 0xf900) == 0x4000) {
-        return disasm_negx_clr_neg_not(node, instr, code, s);
+        return disasm_move_negx_clr_neg_not(node, instr, code, s);
+    } else if ((instr & 0xff80) == 0x4800) {
+        // NOTE EXT is handled with MOVEM
+        return disasm_nbcd_swap_pea(node, instr, code, s);
     } else if ((instr & 0xff00) == 0x4a00) {
         return disasm_tst_tas_illegal(node, instr, code, s);
     } else if ((instr & 0xfff0) == 0x4e40) {
@@ -1179,7 +1204,7 @@ static void disasm_chunk_4(
     } else if ((instr & 0xffc0) == 0x4ec0) {
         return disasm_jsr_jmp(node, instr, code, s, JType::kJmp);
     } else if ((instr & 0xfb80) == 0x4880) {
-        return disasm_movem(node, instr, code, s);
+        return disasm_ext_movem(node, instr, code, s);
     } else if ((instr & 0xf1c0) == 0x41c0) {
         return disasm_lea(node, instr, code, s);
     } else if ((instr & 0xf1c0) == 0x4180) {

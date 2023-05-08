@@ -93,6 +93,11 @@ run_test_iterative() {
   done
 }
 
+# 48xx ext
+#
+run_test_simple "extw %d7" "\x48\x87"
+run_test_simple "extl %d4" "\x48\xc4"
+
 # exxx asl, asr, lsl, lsr, roxl, roxr, rol, ror
 #
 run_test_simple "asrb Dn, Dn" "\xe2\x22"
