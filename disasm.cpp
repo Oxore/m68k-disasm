@@ -1577,56 +1577,7 @@ static void disasm_divu_divs_sbcd_or(
     return disasm_or_and(node, instr, code, s, opsize, "or");
 }
 
-static void disasm_chunk_b(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
-    // TODO Implement
-    return disasm_verbatim(n, i, c, s);
-}
-
-static inline void disasm_exg(DisasmNode &node, uint16_t instr)
-{
-    assert((instr & 0x130) == 0x100);
-    const int m1 = (instr >> 3) & 1;
-    const int m2 = (instr >> 6) & 3;
-    assert(m2 != 0); // Therefore m == 0 and m == 1 are impossible
-    assert(m2 != 3); // Therefore m == 6 and m == 7 are impossible
-    const int m = (m2 << 1) | m1;
-    assert(m != 4); // Only m == 2, m == 3 and m == 5 values are allowed
-    const int xn = instr & 7;
-    const int xi = (instr >> 9) & 7;
-    const auto src = (m == 3) ? AddrModeArg::An(xi) : AddrModeArg::Dn(xi);
-    const auto dst = (m == 2) ? AddrModeArg::Dn(xn) : AddrModeArg::An(xn);
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "exg");
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
-    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
-}
-
-static void disasm_chunk_c(
-        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
-{
-    if ((instr & 0x1f0) == 0x100) {
-        // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily
-        // consumes SBCD.B and others. That's why `skip_suffix` flag is needed,
-        // specifically for ABCD mnemonic. It is probably a bug in GNU AS.
-        const bool skip_size_suffix = true;
-        return disasm_addx_subx_abcd_sbcd(node, instr, "abcd", "", skip_size_suffix);
-    }
-    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
-    if (opsize == OpSize::kInvalid) {
-        return disasm_divu_divs_mulu_muls(node, instr, code, s, "mul");
-    }
-    const unsigned m_split = instr & 0x1f8;
-    if (m_split == 0x188 || m_split == 0x148 || m_split == 0x140) {
-        return disasm_exg(node, instr);
-    }
-    return disasm_or_and(node, instr, code, s, opsize, "and");
-}
-
-static inline void disasm_adda_suba(
+static inline void disasm_adda_suba_cmpa(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s, const char *mnemonic)
 {
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
@@ -1662,18 +1613,15 @@ static inline void disasm_adda_suba(
     node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
-static void disasm_add_sub_x_a(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s, const char *mnemonic)
+static void disasm_add_sub_cmp(
+        DisasmNode &node,
+        const uint16_t instr,
+        const DataBuffer &code,
+        const Settings &s,
+        const char *mnemonic,
+        const OpSize opsize,
+        const bool dir_to_addr)
 {
-    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
-    if (opsize == OpSize::kInvalid) {
-        return disasm_adda_suba(node, instr, code, s, mnemonic);
-    }
-    const bool dir_to_addr = (instr >> 8) & 1;
-    const unsigned m = (instr >> 3) & 7;
-    if (dir_to_addr && (m == 0 || m == 1)) {
-        return disasm_addx_subx_abcd_sbcd(node, instr, mnemonic, "x");
-    }
     const char suffix = suffix_from_opsize(opsize);
     const auto addr = AddrModeArg::Fetch(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
@@ -1732,6 +1680,79 @@ static void disasm_add_sub_x_a(
         snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
     }
     node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+}
+
+static void disasm_eor_cmpm_cmp_cmpa(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+        return disasm_adda_suba_cmpa(node, instr, code, s, "cmp");
+    }
+    const bool dir_to_addr = ((instr >> 8) & 1);
+    if (!dir_to_addr) {
+        return disasm_add_sub_cmp(node, instr, code, s, "cmp", opsize, dir_to_addr);
+    }
+    // TODO Implement
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static inline void disasm_exg(DisasmNode &node, uint16_t instr)
+{
+    assert((instr & 0x130) == 0x100);
+    const int m1 = (instr >> 3) & 1;
+    const int m2 = (instr >> 6) & 3;
+    assert(m2 != 0); // Therefore m == 0 and m == 1 are impossible
+    assert(m2 != 3); // Therefore m == 6 and m == 7 are impossible
+    const int m = (m2 << 1) | m1;
+    assert(m != 4); // Only m == 2, m == 3 and m == 5 values are allowed
+    const int xn = instr & 7;
+    const int xi = (instr >> 9) & 7;
+    const auto src = (m == 3) ? AddrModeArg::An(xi) : AddrModeArg::Dn(xi);
+    const auto dst = (m == 2) ? AddrModeArg::Dn(xn) : AddrModeArg::An(xn);
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "exg");
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+}
+
+static void disasm_chunk_c(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    if ((instr & 0x1f0) == 0x100) {
+        // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily
+        // consumes SBCD.B and others. That's why `skip_suffix` flag is needed,
+        // specifically for ABCD mnemonic. It is probably a bug in GNU AS.
+        const bool skip_size_suffix = true;
+        return disasm_addx_subx_abcd_sbcd(node, instr, "abcd", "", skip_size_suffix);
+    }
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+        return disasm_divu_divs_mulu_muls(node, instr, code, s, "mul");
+    }
+    const unsigned m_split = instr & 0x1f8;
+    if (m_split == 0x188 || m_split == 0x148 || m_split == 0x140) {
+        return disasm_exg(node, instr);
+    }
+    return disasm_or_and(node, instr, code, s, opsize, "and");
+}
+
+static void disasm_add_sub_x_a(
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s, const char *mnemonic)
+{
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+        return disasm_adda_suba_cmpa(node, instr, code, s, mnemonic);
+    }
+    const bool dir_to_addr = (instr >> 8) & 1;
+    const unsigned m = (instr >> 3) & 7;
+    if (dir_to_addr && (m == 0 || m == 1)) {
+        return disasm_addx_subx_abcd_sbcd(node, instr, mnemonic, "x");
+    }
+    return disasm_add_sub_cmp(node, instr, code, s, mnemonic, opsize, dir_to_addr);
 }
 
 static inline const char *ShiftKindToMnemonic(const ShiftKind k)
@@ -1836,7 +1857,7 @@ static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Se
         // Does not exist
         return disasm_verbatim(n, i, c, s);
     case 0xb:
-        return disasm_chunk_b(n, i, c, s);
+        return disasm_eor_cmpm_cmp_cmpa(n, i, c, s);
     case 0xc:
         return disasm_chunk_c(n, i, c, s);
     case 0xd:

@@ -93,6 +93,28 @@ run_test_iterative() {
   done
 }
 
+# bxxx cmp
+#
+run_test_simple "cmpb Dn, Dn" "\xb4\x01"
+run_test_expect_short "cmpb An, Dn" "\xb4\x09"
+run_test_simple "cmpw An, Dn" "\xb4\x49"
+run_test_simple "cmpb (An), Dn" "\xb4\x11"
+run_test_simple "cmpb (An)+, Dn" "\xb4\x19"
+run_test_simple "cmpb -(An), Dn" "\xb4\x21"
+run_test_simple "cmpl (d8,PC,An), Dn" "\xb0\xbb\x88\xff"
+run_test_simple "cmpw (xxx).W, Dn" "\xb0\x78\x88\xff"
+# GNU AS would emit CMPI for "cmp #imm,Xn", so we diassemble it as short
+run_test_expect_short "cmpl #imm, D6" "\xb6\xbc\x44\xd1\xe6\xe9"
+
+# bxxx cmpa
+#
+run_test_simple "cmpaw Dn, An" "\xb4\xc1"
+run_test_simple "cmpal An, An" "\xbb\xca"
+run_test_simple "cmpaw (An)+, An" "\xba\xda"
+run_test_simple "cmpal (xxx).L, An" "\xbb\xf9\x80\x00\x00\x00"
+run_test_simple "cmpaw #imm, An" "\xba\xfc\x01\x00"
+run_test_simple "cmpal #imm, An" "\xbb\xfc\x80\x00\x00\x00"
+
 # cxxx divu divs
 #
 run_test_simple "divuw Dn, Dn" "\x82\xc6"
@@ -293,6 +315,7 @@ run_test_expect_short "btstb large immediate in (xxx).L" "\x08\x39\x10\x21\xff\x
 
 # 0xxx immediate ops
 #
+run_test_simple "orib #0, D0" "\x00\x00\x00\x00"
 run_test_simple "orib zero to CCR" "\x00\x3c\x00\x00"
 run_test_simple "orib positive to CCR" "\x00\x3c\x00\x01"
 run_test_simple "orib positive to CCR" "\x00\x3c\x00\x7f"
