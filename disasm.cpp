@@ -1417,18 +1417,99 @@ static void disasm_moveq(DisasmNode &node, uint16_t instr, const DataBuffer &cod
 
 }
 
-static void chunk_mf000_v8000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void disasm_divu_divs(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
+    // TODO Implement
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static void disasm_sbcd(DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    // TODO Implement
+    return disasm_verbatim(node, instr, code, s);
+}
+
+static void disasm_divu_divs_sbcd_or(
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+{
+    if ((instr & 0x1f0) == 0x100) {
+        return disasm_sbcd(node, instr, code, s);
+    }
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    if (opsize == OpSize::kInvalid) {
+        return disasm_divu_divs(node, instr, code, s);
+    }
+    const char suffix = suffix_from_opsize(opsize);
+    const bool dir_to_addr = (instr >> 8) & 1;
+    const auto addr = AddrModeArg::Fetch(
+            node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    switch (addr.mode) {
+    case AddrMode::kInvalid:
+        return disasm_verbatim(node, instr, code, s);
+    case AddrMode::kDn:
+        if (dir_to_addr) {
+            // Switching dir when bot operands are data registers is not allowed
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kAn:
+        return disasm_verbatim(node, instr, code, s);
+        /* Fall through */
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        break;
+    case AddrMode::kD16PCAddr:
+    case AddrMode::kD8PCXiAddr:
+        if (dir_to_addr) {
+            // PC relative cannot be destination
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    case AddrMode::kImmediate:
+        if (dir_to_addr) {
+            // immediate cannot be destination
+            return disasm_verbatim(node, instr, code, s);
+        }
+        if (1) {
+            // XXX GNU AS always emits ORI (04xx xxxx [xxxx]) instruction when
+            // given OR with immediate source argument. It may become an
+            // option like -fpedantic to generate instruction in this case, but
+            // for now it is gonna be just plain bytes to keep original and
+            // reassembled binaries *identical* as it must be by default.
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
+    }
+    const unsigned dn = (instr >> 9) & 7;
+    const auto reg = AddrModeArg::Dn(dn);
+    char addr_str[32]{};
+    char reg_str[32]{};
+    addr.SNPrint(addr_str, sizeof(addr_str));
+    reg.SNPrint(reg_str, sizeof(reg_str));
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", "or", suffix);
+    if (dir_to_addr) {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+    } else {
+        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+    }
+    node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+}
+
+static void disasm_chunk_b(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
+{
+    // TODO Implement
     return disasm_verbatim(n, i, c, s);
 }
 
-static void chunk_mf000_vb000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
+static void disasm_chunk_c(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
 {
-    return disasm_verbatim(n, i, c, s);
-}
-
-static void chunk_mf000_vc000(DisasmNode &n, uint16_t i, const DataBuffer &c, const Settings &s)
-{
+    // TODO Implement
     return disasm_verbatim(n, i, c, s);
 }
 
@@ -1495,9 +1576,9 @@ static void disasm_add_sub_x_a(
     if (opsize == OpSize::kInvalid) {
         return disasm_adda_suba(node, instr, code, s, mnemonic);
     }
-    const unsigned dir = (instr >> 8) & 1;
+    const bool dir_to_addr = (instr >> 8) & 1;
     const unsigned m = (instr >> 3) & 7;
-    if (dir == 1 && (m == 0 || m == 1)) {
+    if (dir_to_addr && (m == 0 || m == 1)) {
         return disasm_addx_subx(node, instr, mnemonic);
     }
     const char suffix = suffix_from_opsize(opsize);
@@ -1509,7 +1590,7 @@ static void disasm_add_sub_x_a(
     case AddrMode::kDn:
         break;
     case AddrMode::kAn:
-        if (dir == 1 || suffix == 'b') {
+        if (dir_to_addr || suffix == 'b') {
             // An cannot be destination and An cannot be used as byte
             return disasm_verbatim(node, instr, code, s);
         }
@@ -1524,9 +1605,14 @@ static void disasm_add_sub_x_a(
         break;
     case AddrMode::kD16PCAddr:
     case AddrMode::kD8PCXiAddr:
+        if (dir_to_addr) {
+            // PC relative cannot be destination
+            return disasm_verbatim(node, instr, code, s);
+        }
+        break;
     case AddrMode::kImmediate:
-        if (dir == 1) {
-            // PC relative and immediate cannot be destination
+        if (dir_to_addr) {
+            // immediate cannot be destination
             return disasm_verbatim(node, instr, code, s);
         }
         if (1) {
@@ -1547,7 +1633,7 @@ static void disasm_add_sub_x_a(
     addr.SNPrint(addr_str, sizeof(addr_str));
     reg.SNPrint(reg_str, sizeof(reg_str));
     snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-    if (dir == 1) {
+    if (dir_to_addr) {
         snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
     } else {
         snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
@@ -1650,16 +1736,16 @@ static void m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c, const Se
     case 0x7:
         return disasm_moveq(n, i, c, s);
     case 0x8:
-        return chunk_mf000_v8000(n, i, c, s);
+        return disasm_divu_divs_sbcd_or(n, i, c, s);
     case 0x9:
         return disasm_add_sub_x_a(n, i, c, s, "sub");
     case 0xa:
         // Does not exist
         return disasm_verbatim(n, i, c, s);
     case 0xb:
-        return chunk_mf000_vb000(n, i, c, s);
+        return disasm_chunk_b(n, i, c, s);
     case 0xc:
-        return chunk_mf000_vc000(n, i, c, s);
+        return disasm_chunk_c(n, i, c, s);
     case 0xd:
         return disasm_add_sub_x_a(n, i, c, s, "add");
     case 0xe:

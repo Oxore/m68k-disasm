@@ -93,6 +93,19 @@ run_test_iterative() {
   done
 }
 
+# 8xxx or
+#
+run_test_simple "orb Dn, Dn" "\x84\x01"
+run_test_expect_short "orb An, Dn" "\x84\x09"
+run_test_expect_short "orw An, Dn" "\x84\x49"
+run_test_simple "orb (An), Dn" "\x84\x11"
+run_test_simple "orb (An)+, Dn" "\x84\x19"
+run_test_simple "orw -(An), Dn" "\x84\x61"
+run_test_simple "orl (d8,PC,An), Dn" "\x80\xbb\x88\x07"
+# GNU AS would emit ADDI for "or #imm,Xn", so we diassemble it as short
+run_test_expect_short "orl #imm, D6" "\x86\xbc\x44\xd1\xe6\xe9"
+run_test_expect_short "orl D2, D0 swapped direction" "\x81\x42"
+
 # 48xx nbcd swap pea
 #
 run_test_simple "swapw Dn" "\x48\x47"
@@ -184,6 +197,7 @@ run_test_simple "addw An, Dn" "\xd4\x49"
 run_test_simple "addb (An), Dn" "\xd4\x11"
 run_test_simple "addb (An)+, Dn" "\xd4\x19"
 run_test_simple "addb -(An), Dn" "\xd4\x21"
+run_test_simple "addl (d8,PC,An), Dn" "\xd0\xbb\x88\xff"
 # GNU AS would emit ADDI for "add #imm,Xn", so we diassemble it as short
 run_test_expect_short "addl #imm, D6" "\xd6\xbc\x44\xd1\xe6\xe9"
 
