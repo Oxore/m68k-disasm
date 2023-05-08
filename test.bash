@@ -93,7 +93,16 @@ run_test_iterative() {
   done
 }
 
-# 4xxx adda
+# dxxx addx
+#
+run_test_simple "addxb Dn, Dn" "\xd1\x00"
+run_test_simple "addxw Dn, Dn" "\xd3\x47"
+run_test_simple "addxl Dn, Dn" "\xd5\x86"
+run_test_simple "addxb -(An), -(An)" "\xd1\x08"
+run_test_simple "addxw -(An), -(An)" "\xd3\x4f"
+run_test_simple "addxl -(An), -(An)" "\xd5\x8e"
+
+# dxxx adda
 #
 run_test_simple "addaw Dn, An" "\xd4\xc1"
 run_test_simple "addal An, An" "\xdb\xca"
@@ -101,7 +110,7 @@ run_test_simple "addaw (An)+, An" "\xdb\xda"
 run_test_simple "addaw #imm, An" "\xda\xfc\x01\x00"
 run_test_simple "addal #imm, An" "\xdb\xfc\x80\x00\x00\x00"
 
-# 4xxx add
+# dxxx add
 #
 run_test_simple "addb Dn, Dn" "\xd4\x01"
 run_test_expect_short "addb An, Dn" "\xd4\x09"
