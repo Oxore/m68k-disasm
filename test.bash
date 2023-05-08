@@ -93,6 +93,11 @@ run_test_iterative() {
   done
 }
 
+# 8xxx sbcd
+#
+run_test_simple "sbcdb Dn, Dn" "\x81\x01"
+run_test_simple "sbcdb -(An), -(An)" "\x81\x01"
+
 # 8xxx or
 #
 run_test_simple "orb Dn, Dn" "\x84\x01"

@@ -1424,17 +1424,32 @@ static void disasm_divu_divs(
     return disasm_verbatim(node, instr, code, s);
 }
 
-static void disasm_sbcd(DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
+static void disasm_addx_subx_sbcd(
+        DisasmNode &node, const uint16_t instr, const char *mnemonic, const char *msuffix)
 {
-    // TODO Implement
-    return disasm_verbatim(node, instr, code, s);
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    // Must be already handled by parent call
+    assert(opsize != OpSize::kInvalid);
+    const int m = (instr >> 3) & 1;
+    const int xn = instr & 7;
+    const int xi = (instr >> 9) & 7;
+    const auto src = m ? AddrModeArg::AnAddrDecr(xn) : AddrModeArg::Dn(xn);
+    const auto dst = m ? AddrModeArg::AnAddrDecr(xi) : AddrModeArg::Dn(xi);
+    char src_str[32]{};
+    char dst_str[32]{};
+    src.SNPrint(src_str, sizeof(src_str));
+    dst.SNPrint(dst_str, sizeof(dst_str));
+    const char suffix = suffix_from_opsize(opsize);
+    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s%c", mnemonic, msuffix, suffix);
+    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 static void disasm_divu_divs_sbcd_or(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
     if ((instr & 0x1f0) == 0x100) {
-        return disasm_sbcd(node, instr, code, s);
+        return disasm_addx_subx_sbcd(node, instr, "sbcd", "");
     }
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
@@ -1513,26 +1528,6 @@ static void disasm_chunk_c(DisasmNode &n, uint16_t i, const DataBuffer &c, const
     return disasm_verbatim(n, i, c, s);
 }
 
-static inline void disasm_addx_subx(
-        DisasmNode &node, const uint16_t instr, const char * mnemonic)
-{
-    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
-    // Already handled by parent call of `disasm_add_sub_x_a`
-    assert(opsize != OpSize::kInvalid);
-    const int m = (instr >> 3) & 1;
-    const int xn = instr & 7;
-    const int xi = (instr >> 9) & 7;
-    const auto src = m ? AddrModeArg::AnAddrDecr(xn) : AddrModeArg::Dn(xn);
-    const auto dst = m ? AddrModeArg::AnAddrDecr(xi) : AddrModeArg::Dn(xi);
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%sx%c", mnemonic, suffix_from_opsize(opsize));
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
-    node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
-}
-
 static inline void disasm_adda_suba(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const Settings &s, const char *mnemonic)
 {
@@ -1579,7 +1574,7 @@ static void disasm_add_sub_x_a(
     const bool dir_to_addr = (instr >> 8) & 1;
     const unsigned m = (instr >> 3) & 7;
     if (dir_to_addr && (m == 0 || m == 1)) {
-        return disasm_addx_subx(node, instr, mnemonic);
+        return disasm_addx_subx_sbcd(node, instr, mnemonic, "x");
     }
     const char suffix = suffix_from_opsize(opsize);
     const auto addr = AddrModeArg::Fetch(
