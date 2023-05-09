@@ -167,38 +167,6 @@ static char suffix_from_opsize(OpSize opsize)
     return 'w';
 }
 
-static inline size_t snprint_reg_mask(
-        char *const buf, const size_t bufsz, const uint32_t regmask_arg, const bool predecrement)
-{
-    const uint32_t regmask = regmask_arg & 0xffff;
-    size_t written = 0;
-    bool first_printed = 0;
-    size_t span = 0;
-    // 17-th bit used to close the span with 0 value unconditionaly
-    for (int i = 0; i < 17; i++) {
-        const uint32_t mask = 1 << (predecrement ? (15 - i) : i);
-        const bool hit = regmask & mask;
-        const bool span_open = hit && span == 0;
-        const bool span_closed = !hit && span > 1;
-        const int printable_i = i - (span_closed ? 1 : 0);
-        const int id = printable_i % 8;
-        const char regtype = (printable_i >= 8) ? 'a' : 'd';
-        if (span_open || span_closed) {
-            const char *const delimiter = span_open ? (first_printed ? "/" : "") : "-";
-            const size_t remaining = bufsz - written;
-            const int ret = snprintf(buf + written, remaining, "%s%%%c%d", delimiter, regtype, id);
-            assert(ret > 0);
-            assert(static_cast<unsigned>(ret) >= strlen("%d0"));
-            assert(static_cast<unsigned>(ret) <= strlen("-%d0"));
-            written += Min(remaining, ret);
-            first_printed = true;
-        }
-        span = hit ? span + 1 : 0;
-    }
-    assert(written < bufsz); // Output must not be truncated
-    return written;
-}
-
 static size_t disasm_verbatim(
         DisasmNode &node, uint16_t instr, const DataBuffer &)
 {
@@ -342,16 +310,14 @@ static size_t disasm_ext_movem(
     case AddrMode::kImmediate: // 4ebc / 4efc
         return disasm_verbatim(node, instr, code);
     }
-    const char suffix = suffix_from_opsize(opsize);
-    snprintf(node.mnemonic, kMnemonicBufferSize, "movem%c", suffix);
-    char regmask_str[48]{};
-    char addrmodearg_str[32]{};
-    snprint_reg_mask(regmask_str, sizeof(regmask_str), regmask, a.mode == AddrMode::kAnAddrDecr);
-    a.SNPrint(addrmodearg_str, sizeof(addrmodearg_str));
+    node.size_spec = ToSizeSpec(opsize);
+    node.opcode = OpCode::kMOVEM;
     if (dir == MoveDirection::kMemoryToRegister) {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addrmodearg_str, regmask_str);
+        node.arg1 = Arg::FromAddrModeArg(a);
+        node.arg2 = (a.mode == AddrMode::kAnAddrDecr) ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
     } else {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", regmask_str, addrmodearg_str);
+        node.arg1 = (a.mode == AddrMode::kAnAddrDecr) ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
+        node.arg2 = Arg::FromAddrModeArg(a);
     }
     return node.size = kInstructionSizeStepBytes * 2 + a.Size();
 }
@@ -2005,6 +1971,38 @@ static char SizeSpecChar(RegKind k)
     }
     assert(false);
     return 'w';
+}
+
+static inline size_t snprint_reg_mask(
+        char *const buf, const size_t bufsz, const uint32_t regmask_arg, const bool predecrement)
+{
+    const uint32_t regmask = regmask_arg & 0xffff;
+    size_t written = 0;
+    bool first_printed = 0;
+    size_t span = 0;
+    // 17-th bit used to close the span with 0 value unconditionaly
+    for (int i = 0; i < 17; i++) {
+        const uint32_t mask = 1 << (predecrement ? (15 - i) : i);
+        const bool hit = regmask & mask;
+        const bool span_open = hit && span == 0;
+        const bool span_closed = !hit && span > 1;
+        const int printable_i = i - (span_closed ? 1 : 0);
+        const int id = printable_i % 8;
+        const char regtype = (printable_i >= 8) ? 'a' : 'd';
+        if (span_open || span_closed) {
+            const char *const delimiter = span_open ? (first_printed ? "/" : "") : "-";
+            const size_t remaining = bufsz - written;
+            const int ret = snprintf(buf + written, remaining, "%s%%%c%d", delimiter, regtype, id);
+            assert(ret > 0);
+            assert(static_cast<unsigned>(ret) >= strlen("%d0"));
+            assert(static_cast<unsigned>(ret) <= strlen("-%d0"));
+            written += Min(remaining, ret);
+            first_printed = true;
+        }
+        span = hit ? span + 1 : 0;
+    }
+    assert(written < bufsz); // Output must not be truncated
+    return written;
 }
 
 int Arg::SNPrint(char *buf, size_t bufsz, const Settings &) const

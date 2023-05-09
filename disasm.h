@@ -315,6 +315,16 @@ struct Arg {
         a.uword = instr;
         return a;
     }
+    static constexpr Self RegMask(const uint16_t regmask) {
+        Arg a{ArgType::kRegMask, 0};
+        a.uword = regmask;
+        return a;
+    }
+    static constexpr Self RegMaskPredecrement(const uint16_t regmask) {
+        Arg a{ArgType::kRegMaskPredecrement, 0};
+        a.uword = regmask;
+        return a;
+    }
 private:
     static constexpr Self addrModeXn(const ArgType type, const uint8_t xn) {
         Arg a{type, 0};
@@ -381,9 +391,9 @@ public:
         case AddrMode::kAnAddr:
             return addrModeXn(ArgType::kAnAddr, arg.xn);
         case AddrMode::kAnAddrIncr:
-            return addrModeXn(ArgType::kAnAddrDecr, arg.xn);
-        case AddrMode::kAnAddrDecr:
             return addrModeXn(ArgType::kAnAddrIncr, arg.xn);
+        case AddrMode::kAnAddrDecr:
+            return addrModeXn(ArgType::kAnAddrDecr, arg.xn);
         case AddrMode::kD16AnAddr:
             return addrModeD16AnAddr(D16AnPCAddr{arg.xn, static_cast<int16_t>(arg.value)});
         case AddrMode::kD8AnXiAddr:
