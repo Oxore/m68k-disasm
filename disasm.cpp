@@ -448,16 +448,16 @@ static size_t disasm_bra_bsr_bcc(
     return node.size;
 }
 
-static inline const char *mnemonic_for_bitops(unsigned opcode)
+static OpCode OpCodeForBitOps(unsigned opcode)
 {
     switch (opcode) {
-    case 0: return "btst";
-    case 1: return "bchg";
-    case 2: return "bclr";
-    case 3: return "bset";
+    case 0: return OpCode::kBTST;
+    case 1: return OpCode::kBCHG;
+    case 2: return OpCode::kBCLR;
+    case 3: return OpCode::kBSET;
     }
     assert(false);
-    return "?";
+    return OpCode::kNone;
 }
 
 static inline size_t disasm_movep(
@@ -475,16 +475,14 @@ static inline size_t disasm_movep(
     }
     assert(addr.mode == AddrMode::kD16AnAddr);
     const auto reg = AddrModeArg::Dn(dn);
-    char addr_str[32]{};
-    char reg_str[32]{};
-    addr.SNPrint(addr_str, sizeof(addr_str));
-    reg.SNPrint(reg_str, sizeof(reg_str));
-    const char suffix = (opsize == OpSize::kLong) ? 'l' : 'w';
-    snprintf(node.mnemonic, kMnemonicBufferSize, "movep%c", suffix);
+    node.opcode = OpCode::kMOVEP;
+    node.size_spec = ToSizeSpec(opsize);
     if (dir == MoveDirection::kRegisterToMemory) {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+        node.arg1 = Arg::FromAddrModeArg(reg);
+        node.arg2 = Arg::FromAddrModeArg(addr);
     } else {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+        node.arg1 = Arg::FromAddrModeArg(addr);
+        node.arg2 = Arg::FromAddrModeArg(reg);
     }
     return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
@@ -546,14 +544,10 @@ static size_t disasm_src_arg_bitops_movep(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr, code);
     }
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    const char suffix = dst.mode == AddrMode::kDn ? 'l' : 'b';
-    const char *mnemonic = mnemonic_for_bitops(opcode);
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.opcode = OpCodeForBitOps(opcode);
+    node.size_spec = dst.mode == AddrMode::kDn ? SizeSpec::kLong : SizeSpec::kByte;
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
@@ -562,29 +556,30 @@ static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c
     return disasm_src_arg_bitops_movep(n, i, c, false);
 }
 
-static inline size_t disasm_logical_immediate_to(
-        DisasmNode &node, const char* mnemonic, const char suffix, const int16_t imm)
+static size_t disasm_logical_immediate_to(
+        DisasmNode &node, OpCode opcode, OpSize opsize, AddrModeArg imm)
 {
-    const char *reg = suffix == 'b' ? "ccr" : "sr";
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-    snprintf(node.arguments, kArgsBufferSize, "#%d,%%%s", imm, reg);
+    node.opcode = opcode;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(imm);
+    node.arg2 = (opsize == OpSize::kByte) ? Arg::CCR() : Arg::SR();
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
-static inline const char *mnemonic_logical_immediate(const unsigned opcode)
+static OpCode OpCodeForLogicalImmediate(const unsigned opcode)
 {
     switch (opcode) {
-    case 0: return "ori";
-    case 1: return "andi";
-    case 2: return "subi";
-    case 3: return "addi";
+    case 0: return OpCode::kORI;
+    case 1: return OpCode::kANDI;
+    case 2: return OpCode::kSUBI;
+    case 3: return OpCode::kADDI;
     case 4: break;
-    case 5: return "eori";
-    case 6: return "cmpi";
+    case 5: return OpCode::kEORI;
+    case 6: return OpCode::kCMPI;
     case 7: break;
     }
     assert(false);
-    return "?";
+    return OpCode::kNone;
 }
 
 static size_t disasm_bitops_movep(
@@ -627,10 +622,9 @@ static size_t disasm_bitops_movep(
         return disasm_verbatim(node, instr, code);
     }
     assert(src.mode == AddrMode::kImmediate);
-    const char *mnemonic = mnemonic_logical_immediate(opcode);
-    const char suffix = suffix_from_opsize(opsize);
+    const OpCode mnemonic = OpCodeForLogicalImmediate(opcode);
     if (m == 7 && xn == 4) {
-        return disasm_logical_immediate_to(node, mnemonic, suffix, src.value);
+        return disasm_logical_immediate_to(node, mnemonic, opsize, src);
     }
     const auto dst = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, opsize);
@@ -659,10 +653,10 @@ static size_t disasm_bitops_movep(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr, code);
     }
-    char dst_str[32]{};
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-    snprintf(node.arguments, kArgsBufferSize, "#%d,%s", src.value, dst_str);
+    node.opcode = mnemonic;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 

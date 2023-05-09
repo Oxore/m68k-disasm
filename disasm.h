@@ -331,6 +331,8 @@ struct Arg {
         a.lword = displacement;
         return a;
     }
+    static constexpr Self CCR() { return Arg{ArgType::kCCR, 0}; }
+    static constexpr Self SR() { return Arg{ArgType::kSR, 0}; }
 private:
     static constexpr Self addrModeXn(const ArgType type, const uint8_t xn) {
         Arg a{type, 0};
