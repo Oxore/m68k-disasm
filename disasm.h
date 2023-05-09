@@ -25,12 +25,19 @@ enum class AddrMode: uint8_t {
     kImmediate,
 };
 
+enum class OpSize: int {
+    kByte = 0,
+    kWord = 1,
+    kLong = 2,
+    kInvalid = 3,
+};
+
 struct AddrModeArg {
     AddrMode mode{};
     uint8_t xn{}; /// Xn register number: 0..7
     char r{}; /// Xi register type specifier letter: either 'd' or 'a'
     uint8_t xi{}; /// Xi register number: 0..7
-    char s{}; /// Size spec letter of Xi or imm: either 'w' or 'l'
+    OpSize s{}; /// Size spec letter of Xi or imm: either 'w' or 'l'
     int32_t value{}; /// Word, Long or Immediate
     /// Size of the extension: 0, 2 or 4 bytes
     constexpr size_t Size() const
@@ -53,7 +60,7 @@ struct AddrModeArg {
         case AddrMode::kD8PCXiAddr:
             return 2;
         case AddrMode::kImmediate:
-            return s == 'l' ? 4 : 2;
+            return s == OpSize::kLong ? 4 : 2;
         }
         return 0;
     }
@@ -79,31 +86,31 @@ struct AddrModeArg {
     }
     static constexpr AddrModeArg D16AnAddr(uint8_t xn, int16_t d16)
     {
-        return AddrModeArg{AddrMode::kD16AnAddr, xn, 0, 0, 0, d16};
+        return AddrModeArg{AddrMode::kD16AnAddr, xn, 0, 0, OpSize::kWord, d16};
     }
     static constexpr AddrModeArg D8AnXiAddr(
-            uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
+            uint8_t xn, char r, uint8_t xi, OpSize s, int8_t d8)
     {
         return AddrModeArg{AddrMode::kD8AnXiAddr, xn, r, xi, s, d8};
     }
     static constexpr AddrModeArg Word(uint8_t xn, int16_t w)
     {
-        return AddrModeArg{AddrMode::kWord, xn, 0, 0, 0, w};
+        return AddrModeArg{AddrMode::kWord, xn, 0, 0, OpSize::kWord, w};
     }
     static constexpr AddrModeArg Long(uint8_t xn, int32_t l)
     {
-        return AddrModeArg{AddrMode::kLong, xn, 0, 0, 0, l};
+        return AddrModeArg{AddrMode::kLong, xn, 0, 0, OpSize::kWord, l};
     }
     static constexpr AddrModeArg D16PCAddr(uint8_t xn, int16_t d16)
     {
-        return AddrModeArg{AddrMode::kD16PCAddr, xn, 0, 0, 0, d16};
+        return AddrModeArg{AddrMode::kD16PCAddr, xn, 0, 0, OpSize::kWord, d16};
     }
     static constexpr AddrModeArg D8PCXiAddr(
-            uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
+            uint8_t xn, char r, uint8_t xi, OpSize s, int8_t d8)
     {
         return AddrModeArg{AddrMode::kD8PCXiAddr, xn, r, xi, s, d8};
     }
-    static constexpr AddrModeArg Immediate(uint8_t xn, char s, int32_t value)
+    static constexpr AddrModeArg Immediate(uint8_t xn, OpSize s, int32_t value)
     {
         return AddrModeArg{AddrMode::kImmediate, xn, 0, 0, s, value};
     }
@@ -126,7 +133,7 @@ struct AddrModeArg {
         case AddrMode::kD16AnAddr:
             return snprintf(buf, bufsz, "%%a%u@(%d:w)", xn, value);
         case AddrMode::kD8AnXiAddr:
-            return snprintf(buf, bufsz, "%%a%u@(%d,%%%c%d:%c)", xn, value, r, xi, s);
+            return snprintf(buf, bufsz, "%%a%u@(%d,%%%c%d:%c)", xn, value, r, xi, (s == OpSize::kLong) ? 'l' : 'w');
         case AddrMode::kWord:
             return snprintf(buf, bufsz, "0x%x:w", value);
         case AddrMode::kLong:
@@ -134,7 +141,7 @@ struct AddrModeArg {
         case AddrMode::kD16PCAddr:
             return snprintf(buf, bufsz, "%%pc@(%d:w)", value);
         case AddrMode::kD8PCXiAddr:
-            return snprintf(buf, bufsz, "%%pc@(%d,%%%c%d:%c)", value, r, xi, s);
+            return snprintf(buf, bufsz, "%%pc@(%d,%%%c%d:%c)", value, r, xi, (s == OpSize::kLong) ? 'l' : 'w');
         case AddrMode::kImmediate:
             return snprintf(buf, bufsz, "#%d", value);
         }
@@ -349,15 +356,15 @@ private:
         a.lword = value;
         return a;
     }
-    static constexpr RegKind RegKindFromRegCharSizeChar(char r, char s)
+    static constexpr RegKind RegKindFromRegCharSizeChar(char r, OpSize s)
     {
-        if (r == 'd' && s == 'w') {
+        if (r == 'd' && s == OpSize::kWord) {
             return RegKind::kDnWord;
-        } else if (r == 'd' && s == 'l') {
+        } else if (r == 'd' && s == OpSize::kLong) {
             return RegKind::kDnLong;
-        } else if (r == 'a' && s == 'w') {
+        } else if (r == 'a' && s == OpSize::kWord) {
             return RegKind::kAnWord;
-        } else if (r == 'a' && s == 'l') {
+        } else if (r == 'a' && s == OpSize::kLong) {
             return RegKind::kAnLong;
         }
         return RegKind::kDnWord;
