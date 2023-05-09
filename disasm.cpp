@@ -52,9 +52,27 @@ enum class AddrMode: uint8_t {
     kImmediate,
 };
 
+enum class Cond {
+    kT = 0,
+    kF = 1,
+    kHI = 2,
+    kLS = 3,
+    kCC = 4,
+    kCS = 5,
+    kNE = 6,
+    kEQ = 7,
+    kVC = 8,
+    kVS = 9,
+    kPL = 10,
+    kMI = 11,
+    kGE = 12,
+    kLT = 13,
+    kGT = 14,
+    kLE = 15,
+};
+
 struct AddrModeArg {
     AddrMode mode{};
-    uint8_t m{};
     uint8_t xn{}; /// Xn register number: 0..7
     char r{}; /// Xi register type specifier letter: either 'd' or 'a'
     uint8_t xi{}; /// Xi register number: 0..7
@@ -87,53 +105,53 @@ struct AddrModeArg {
     }
     static constexpr AddrModeArg Dn(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kDn, 0, xn};
+        return AddrModeArg{AddrMode::kDn, xn};
     }
     static constexpr AddrModeArg An(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAn, 1, xn};
+        return AddrModeArg{AddrMode::kAn, xn};
     }
     static constexpr AddrModeArg AnAddr(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAnAddr, 2, xn};
+        return AddrModeArg{AddrMode::kAnAddr, xn};
     }
     static constexpr AddrModeArg AnAddrIncr(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAnAddrIncr, 3, xn};
+        return AddrModeArg{AddrMode::kAnAddrIncr, xn};
     }
     static constexpr AddrModeArg AnAddrDecr(uint8_t xn)
     {
-        return AddrModeArg{AddrMode::kAnAddrDecr, 4, xn};
+        return AddrModeArg{AddrMode::kAnAddrDecr, xn};
     }
     static constexpr AddrModeArg D16AnAddr(uint8_t xn, int16_t d16)
     {
-        return AddrModeArg{AddrMode::kD16AnAddr, 5, xn, 0, 0, 0, d16};
+        return AddrModeArg{AddrMode::kD16AnAddr, xn, 0, 0, 0, d16};
     }
     static constexpr AddrModeArg D8AnXiAddr(
             uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
     {
-        return AddrModeArg{AddrMode::kD8AnXiAddr, 6, xn, r, xi, s, d8};
+        return AddrModeArg{AddrMode::kD8AnXiAddr, xn, r, xi, s, d8};
     }
-    static constexpr AddrModeArg Word(uint8_t m, uint8_t xn, int16_t w)
+    static constexpr AddrModeArg Word(uint8_t xn, int16_t w)
     {
-        return AddrModeArg{AddrMode::kWord, m, xn, 0, 0, 0, w};
+        return AddrModeArg{AddrMode::kWord, xn, 0, 0, 0, w};
     }
-    static constexpr AddrModeArg Long(uint8_t m, uint8_t xn, int32_t l)
+    static constexpr AddrModeArg Long(uint8_t xn, int32_t l)
     {
-        return AddrModeArg{AddrMode::kLong, m, xn, 0, 0, 0, l};
+        return AddrModeArg{AddrMode::kLong, xn, 0, 0, 0, l};
     }
-    static constexpr AddrModeArg D16PCAddr(uint8_t m, uint8_t xn, int16_t d16)
+    static constexpr AddrModeArg D16PCAddr(uint8_t xn, int16_t d16)
     {
-        return AddrModeArg{AddrMode::kD16PCAddr, m, xn, 0, 0, 0, d16};
+        return AddrModeArg{AddrMode::kD16PCAddr, xn, 0, 0, 0, d16};
     }
     static constexpr AddrModeArg D8PCXiAddr(
-            uint8_t m, uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
+            uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
     {
-        return AddrModeArg{AddrMode::kD8PCXiAddr, m, xn, r, xi, s, d8};
+        return AddrModeArg{AddrMode::kD8PCXiAddr, xn, r, xi, s, d8};
     }
-    static constexpr AddrModeArg Immediate(uint8_t m, uint8_t xn, char s, int32_t value)
+    static constexpr AddrModeArg Immediate(uint8_t xn, char s, int32_t value)
     {
-        return AddrModeArg{AddrMode::kImmediate, m, xn, 0, 0, s, value};
+        return AddrModeArg{AddrMode::kImmediate, xn, 0, 0, s, value};
     }
     static constexpr AddrModeArg Fetch(
             const uint32_t offset, const DataBuffer &code, int16_t instr, char s)
@@ -222,19 +240,19 @@ constexpr AddrModeArg AddrModeArg::Fetch(
         case 0: // (xxx).W, Additional Word
             if (offset < code.occupied_size) {
                 const int32_t w = GetI16BE(code.buffer + offset);
-                return AddrModeArg::Word(m, xn, w);
+                return AddrModeArg::Word(xn, w);
             }
             break;
         case 1: // (xxx).L, Additional Long
             if (offset + kInstructionSizeStepBytes < code.occupied_size) {
                 const int32_t l = GetI32BE(code.buffer + offset);
-                return AddrModeArg::Long(m, xn, l);
+                return AddrModeArg::Long(xn, l);
             }
             break;
         case 2: // (d16, PC), Additional Word
             if (offset < code.occupied_size) {
                 const int16_t d16 = GetI16BE(code.buffer + offset);
-                return AddrModeArg::D16PCAddr(m, xn, d16);
+                return AddrModeArg::D16PCAddr(xn, d16);
             }
             break;
         case 3: // (d8, PC, Xi), Brief Extension Word
@@ -249,14 +267,14 @@ constexpr AddrModeArg AddrModeArg::Fetch(
                 const uint8_t xi = (briefext >> 12) & 7;
                 const char s = ((briefext >> 11) & 1) ? 'l' : 'w';
                 const int8_t d8 = briefext & 0xff;
-                return AddrModeArg::D8PCXiAddr(m, xn, r, xi, s, d8);
+                return AddrModeArg::D8PCXiAddr(xn, r, xi, s, d8);
             }
             break;
         case 4: // #imm
             if (s == 'l') {
                 if (offset + kInstructionSizeStepBytes < code.occupied_size) {
                     const int32_t value = GetI32BE(code.buffer + offset);
-                    return AddrModeArg::Immediate(m, xn, s, value);
+                    return AddrModeArg::Immediate(xn, s, value);
                 }
             } else if (offset < code.occupied_size) {
                 const int16_t value = GetI16BE(code.buffer + offset);
@@ -267,7 +285,7 @@ constexpr AddrModeArg AddrModeArg::Fetch(
                         break;
                     }
                 }
-                return AddrModeArg::Immediate(m, xn, s, value);
+                return AddrModeArg::Immediate(xn, s, value);
             }
         case 5: // Does not exist
         case 6: // Does not exist
@@ -543,44 +561,25 @@ static void disasm_chk(
     node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
-enum class Condition {
-    kT = 0,
-    kF = 1,
-    kHI = 2,
-    kLS = 3,
-    kCC = 4,
-    kCS = 5,
-    kNE = 6,
-    kEQ = 7,
-    kVC = 8,
-    kVS = 9,
-    kPL = 10,
-    kMI = 11,
-    kGE = 12,
-    kLT = 13,
-    kGT = 14,
-    kLE = 15,
-};
-
-static inline const char *bcc_mnemonic_by_condition(Condition condition)
+static inline const char *bcc_mnemonic_by_condition(Cond condition)
 {
     switch (condition) {
-    case Condition::kT:  return "bra"; // 60xx
-    case Condition::kF:  return "bsr"; // 61xx
-    case Condition::kHI: return "bhi"; // 62xx
-    case Condition::kLS: return "bls"; // 63xx
-    case Condition::kCC: return "bcc"; // 64xx
-    case Condition::kCS: return "bcs"; // 65xx
-    case Condition::kNE: return "bne"; // 66xx
-    case Condition::kEQ: return "beq"; // 67xx
-    case Condition::kVC: return "bvc"; // 68xx
-    case Condition::kVS: return "bvs"; // 69xx
-    case Condition::kPL: return "bpl"; // 6axx
-    case Condition::kMI: return "bmi"; // 6bxx
-    case Condition::kGE: return "bge"; // 6cxx
-    case Condition::kLT: return "blt"; // 6dxx
-    case Condition::kGT: return "bgt"; // 6exx
-    case Condition::kLE: return "ble"; // 6fxx
+    case Cond::kT:  return "bra"; // 60xx
+    case Cond::kF:  return "bsr"; // 61xx
+    case Cond::kHI: return "bhi"; // 62xx
+    case Cond::kLS: return "bls"; // 63xx
+    case Cond::kCC: return "bcc"; // 64xx
+    case Cond::kCS: return "bcs"; // 65xx
+    case Cond::kNE: return "bne"; // 66xx
+    case Cond::kEQ: return "beq"; // 67xx
+    case Cond::kVC: return "bvc"; // 68xx
+    case Cond::kVS: return "bvs"; // 69xx
+    case Cond::kPL: return "bpl"; // 6axx
+    case Cond::kMI: return "bmi"; // 6bxx
+    case Cond::kGE: return "bge"; // 6cxx
+    case Cond::kLT: return "blt"; // 6dxx
+    case Cond::kGT: return "bgt"; // 6exx
+    case Cond::kLE: return "ble"; // 6fxx
     }
     assert(false);
     return "?";
@@ -589,7 +588,7 @@ static inline const char *bcc_mnemonic_by_condition(Condition condition)
 static void disasm_bra_bsr_bcc(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const Settings &s)
 {
-    Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
+    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
     const char *mnemonic = bcc_mnemonic_by_condition(condition);
     // False condition Indicates BSR
     int dispmt = static_cast<int8_t>(instr & 0xff);
@@ -610,7 +609,7 @@ static void disasm_bra_bsr_bcc(
     } else {
         node.size = kInstructionSizeStepBytes;
     }
-    node.is_call = (condition == Condition::kF);
+    node.is_call = (condition == Cond::kF);
     dispmt += kInstructionSizeStepBytes;
     const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
     node.branch_addr = branch_addr;
@@ -1287,25 +1286,25 @@ static void disasm_addq_subq(
     a.SNPrint(node.arguments + ret, kArgsBufferSize - ret);
 }
 
-static inline const char *dbcc_mnemonic_by_condition(Condition condition)
+static inline const char *dbcc_mnemonic_by_condition(Cond condition)
 {
     switch (condition) {
-    case Condition::kT:  return "dbt";  // 50c8..50cf
-    case Condition::kF:  return "dbf";  // 51c8..51cf
-    case Condition::kHI: return "dbhi"; // 52c8..52cf
-    case Condition::kLS: return "dbls"; // 53c8..53cf
-    case Condition::kCC: return "dbcc"; // 54c8..54cf
-    case Condition::kCS: return "dbcs"; // 55c8..55cf
-    case Condition::kNE: return "dbne"; // 56c8..56cf
-    case Condition::kEQ: return "dbeq"; // 57c8..57cf
-    case Condition::kVC: return "dbvc"; // 58c8..58cf
-    case Condition::kVS: return "dbvs"; // 59c8..59cf
-    case Condition::kPL: return "dbpl"; // 5ac8..5acf
-    case Condition::kMI: return "dbmi"; // 5bc8..5bcf
-    case Condition::kGE: return "dbge"; // 5cc8..5ccf
-    case Condition::kLT: return "dblt"; // 5dc8..5dcf
-    case Condition::kGT: return "dbgt"; // 5ec8..5ecf
-    case Condition::kLE: return "dble"; // 5fc8..5fcf
+    case Cond::kT:  return "dbt";  // 50c8..50cf
+    case Cond::kF:  return "dbf";  // 51c8..51cf
+    case Cond::kHI: return "dbhi"; // 52c8..52cf
+    case Cond::kLS: return "dbls"; // 53c8..53cf
+    case Cond::kCC: return "dbcc"; // 54c8..54cf
+    case Cond::kCS: return "dbcs"; // 55c8..55cf
+    case Cond::kNE: return "dbne"; // 56c8..56cf
+    case Cond::kEQ: return "dbeq"; // 57c8..57cf
+    case Cond::kVC: return "dbvc"; // 58c8..58cf
+    case Cond::kVS: return "dbvs"; // 59c8..59cf
+    case Cond::kPL: return "dbpl"; // 5ac8..5acf
+    case Cond::kMI: return "dbmi"; // 5bc8..5bcf
+    case Cond::kGE: return "dbge"; // 5cc8..5ccf
+    case Cond::kLT: return "dblt"; // 5dc8..5dcf
+    case Cond::kGT: return "dbgt"; // 5ec8..5ecf
+    case Cond::kLE: return "dble"; // 5fc8..5fcf
     }
     assert(false);
     return "?";
@@ -1321,7 +1320,7 @@ static void disasm_dbcc(DisasmNode &node, uint16_t instr, const DataBuffer &code
         return disasm_verbatim(node, instr, code, s);
     }
     node.size = kInstructionSizeStepBytes * 2;
-    Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
+    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
     const char *mnemonic = dbcc_mnemonic_by_condition(condition);
     const int dn = (instr & 7);
     const uint32_t branch_addr = static_cast<uint32_t>(
@@ -1336,25 +1335,25 @@ static void disasm_dbcc(DisasmNode &node, uint16_t instr, const DataBuffer &code
     return;
 }
 
-static inline const char *scc_mnemonic_by_condition(Condition condition)
+static inline const char *scc_mnemonic_by_condition(Cond condition)
 {
     switch (condition) {
-    case Condition::kT:  return "st";  // 50cx..50fx
-    case Condition::kF:  return "sf";  // 51cx..51fx
-    case Condition::kHI: return "shi"; // 52cx..52fx
-    case Condition::kLS: return "sls"; // 53cx..53fx
-    case Condition::kCC: return "scc"; // 54cx..54fx
-    case Condition::kCS: return "scs"; // 55cx..55fx
-    case Condition::kNE: return "sne"; // 56cx..56fx
-    case Condition::kEQ: return "seq"; // 57cx..57fx
-    case Condition::kVC: return "svc"; // 58cx..58fx
-    case Condition::kVS: return "svs"; // 59cx..59fx
-    case Condition::kPL: return "spl"; // 5acx..5afx
-    case Condition::kMI: return "smi"; // 5bcx..5bfx
-    case Condition::kGE: return "sge"; // 5ccx..5cfx
-    case Condition::kLT: return "slt"; // 5dcx..5dfx
-    case Condition::kGT: return "sgt"; // 5ecx..5efx
-    case Condition::kLE: return "sle"; // 5fcx..5ffx
+    case Cond::kT:  return "st";  // 50cx..50fx
+    case Cond::kF:  return "sf";  // 51cx..51fx
+    case Cond::kHI: return "shi"; // 52cx..52fx
+    case Cond::kLS: return "sls"; // 53cx..53fx
+    case Cond::kCC: return "scc"; // 54cx..54fx
+    case Cond::kCS: return "scs"; // 55cx..55fx
+    case Cond::kNE: return "sne"; // 56cx..56fx
+    case Cond::kEQ: return "seq"; // 57cx..57fx
+    case Cond::kVC: return "svc"; // 58cx..58fx
+    case Cond::kVS: return "svs"; // 59cx..59fx
+    case Cond::kPL: return "spl"; // 5acx..5afx
+    case Cond::kMI: return "smi"; // 5bcx..5bfx
+    case Cond::kGE: return "sge"; // 5ccx..5cfx
+    case Cond::kLT: return "slt"; // 5dcx..5dfx
+    case Cond::kGT: return "sgt"; // 5ecx..5efx
+    case Cond::kLE: return "sle"; // 5fcx..5ffx
     }
     assert(false);
     return "?";
@@ -1386,7 +1385,7 @@ static void disasm_scc_dbcc(
         return disasm_verbatim(node, instr, code, s);
     }
     node.size = kInstructionSizeStepBytes + a.Size();
-    Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
+    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
     const char *mnemonic = scc_mnemonic_by_condition(condition);
     snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
     a.SNPrint(node.arguments, kArgsBufferSize);
