@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
 enum class OpCode: uint8_t {
     kNone = 0,
@@ -217,7 +218,13 @@ struct DisasmNode {
     SizeSpec size_spec{SizeSpec::kNone};
     Condition condition{Condition::kT}; ///< For Scc, Bcc and Dbcc
     Arg args[2]{}; ///< Should replace `arguments` field
-    void Disasm(const DataBuffer &code, const Settings&);
+
+    /*! Disassembles instruction with arguments
+     * returns size of whole instruction with arguments in bytes
+     */
+    size_t Disasm(const DataBuffer &code);
+    int FPrintf(FILE*, const Settings&);
+    int SNPrintf(char *buf, size_t bufsz, const Settings&);
     void AddReferencedBy(uint32_t offset, ReferenceType);
     ~DisasmNode();
 private:

@@ -67,7 +67,7 @@ DisasmNode *DisasmMap::insertTracedNode(uint32_t offset, TracedNodeType type)
     return node;
 }
 
-void DisasmMap::DisasmTraced(const DataBuffer &code, const Settings & s)
+void DisasmMap::DisasmTraced(const DataBuffer &code, const Settings &)
 {
     assert(_type == DisasmMapType::kTraced);
     for (size_t i = 0; i < kDisasmMapSizeElements; i++) {
@@ -75,23 +75,23 @@ void DisasmMap::DisasmTraced(const DataBuffer &code, const Settings & s)
         if (!node) {
             continue;
         }
-        node->Disasm(code, s);
+        node->Disasm(code);
         if (node->has_branch_addr && node->branch_addr < code.occupied_size) {
             auto *ref_node = insertTracedNode(
                     node->branch_addr, TracedNodeType::kInstruction);
-            ref_node->Disasm(code, s);
+            ref_node->Disasm(code);
             ref_node->AddReferencedBy(
                     node->offset, node->is_call ? ReferenceType::kCall : ReferenceType::kBranch);
         }
     }
 }
 
-void DisasmMap::DisasmAll(const DataBuffer &code, const Settings & s)
+void DisasmMap::DisasmAll(const DataBuffer &code, const Settings &)
 {
     assert(_type == DisasmMapType::kRaw);
     for (size_t i = 0; i < Min(kDisasmMapSizeElements, code.occupied_size);) {
         auto node = insertTracedNode(i, TracedNodeType::kInstruction);
-        node->Disasm(code, s);
+        node->Disasm(code);
         i += node->size;
     }
 }
