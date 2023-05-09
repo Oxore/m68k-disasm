@@ -160,7 +160,13 @@ static void RenderDisassembly(
                 }
             }
             const char *const delimiter = node->arguments[0] != '\0' ? " " : "";
-            fprintf(output, "  %s%s%s", node->mnemonic, delimiter, node->arguments);
+            if (node->opcode != OpCode::kNone) {
+                // New API
+                node->FPrint(output, s);
+            } else {
+                // Old API
+                fprintf(output, "  %s%s%s", node->mnemonic, delimiter, node->arguments);
+            }
             if (node->has_branch_addr && s.xrefs_to) {
                 char branch_addr[12]{};
                 snprintf(branch_addr, sizeof(branch_addr), " .L%08x", node->branch_addr);

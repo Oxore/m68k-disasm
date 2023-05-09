@@ -36,22 +36,6 @@ enum class OpSize: int {
     kInvalid = 3,
 };
 
-enum class AddrMode: uint8_t {
-    kInvalid = 0,
-    kDn,
-    kAn,
-    kAnAddr,
-    kAnAddrIncr,
-    kAnAddrDecr,
-    kD16AnAddr,
-    kD8AnXiAddr,
-    kWord,
-    kLong,
-    kD16PCAddr,
-    kD8PCXiAddr,
-    kImmediate,
-};
-
 enum class Cond {
     kT = 0,
     kF = 1,
@@ -71,135 +55,7 @@ enum class Cond {
     kLE = 15,
 };
 
-struct AddrModeArg {
-    AddrMode mode{};
-    uint8_t xn{}; /// Xn register number: 0..7
-    char r{}; /// Xi register type specifier letter: either 'd' or 'a'
-    uint8_t xi{}; /// Xi register number: 0..7
-    char s{}; /// Size spec letter of Xi or imm: either 'w' or 'l'
-    int32_t value{}; /// Word, Long or Immediate
-    /// Size of the extension: 0, 2 or 4 bytes
-    constexpr size_t Size() const
-    {
-        switch (mode) {
-        case AddrMode::kInvalid:
-        case AddrMode::kDn:
-        case AddrMode::kAn:
-        case AddrMode::kAnAddr:
-        case AddrMode::kAnAddrIncr:
-        case AddrMode::kAnAddrDecr:
-            return 0;
-        case AddrMode::kD16AnAddr:
-        case AddrMode::kD8AnXiAddr:
-        case AddrMode::kWord:
-            return 2;
-        case AddrMode::kLong:
-            return 4;
-        case AddrMode::kD16PCAddr:
-        case AddrMode::kD8PCXiAddr:
-            return 2;
-        case AddrMode::kImmediate:
-            return s == 'l' ? 4 : 2;
-        }
-        return 0;
-    }
-    static constexpr AddrModeArg Dn(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kDn, xn};
-    }
-    static constexpr AddrModeArg An(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAn, xn};
-    }
-    static constexpr AddrModeArg AnAddr(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAnAddr, xn};
-    }
-    static constexpr AddrModeArg AnAddrIncr(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAnAddrIncr, xn};
-    }
-    static constexpr AddrModeArg AnAddrDecr(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAnAddrDecr, xn};
-    }
-    static constexpr AddrModeArg D16AnAddr(uint8_t xn, int16_t d16)
-    {
-        return AddrModeArg{AddrMode::kD16AnAddr, xn, 0, 0, 0, d16};
-    }
-    static constexpr AddrModeArg D8AnXiAddr(
-            uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
-    {
-        return AddrModeArg{AddrMode::kD8AnXiAddr, xn, r, xi, s, d8};
-    }
-    static constexpr AddrModeArg Word(uint8_t xn, int16_t w)
-    {
-        return AddrModeArg{AddrMode::kWord, xn, 0, 0, 0, w};
-    }
-    static constexpr AddrModeArg Long(uint8_t xn, int32_t l)
-    {
-        return AddrModeArg{AddrMode::kLong, xn, 0, 0, 0, l};
-    }
-    static constexpr AddrModeArg D16PCAddr(uint8_t xn, int16_t d16)
-    {
-        return AddrModeArg{AddrMode::kD16PCAddr, xn, 0, 0, 0, d16};
-    }
-    static constexpr AddrModeArg D8PCXiAddr(
-            uint8_t xn, char r, uint8_t xi, char s, int8_t d8)
-    {
-        return AddrModeArg{AddrMode::kD8PCXiAddr, xn, r, xi, s, d8};
-    }
-    static constexpr AddrModeArg Immediate(uint8_t xn, char s, int32_t value)
-    {
-        return AddrModeArg{AddrMode::kImmediate, xn, 0, 0, s, value};
-    }
-    static constexpr AddrModeArg Fetch(
-            const uint32_t offset, const DataBuffer &code, int16_t instr, char s)
-    {
-        const int addrmode = instr & 0x3f;
-        const int m = (addrmode >> 3) & 7;
-        const int xn = addrmode & 7;
-        return Fetch(offset, code, m, xn, s);
-    }
-    static inline constexpr AddrModeArg Fetch(
-            uint32_t offset, const DataBuffer &code, int m, int xn, char s);
-    int SNPrint(char *const buf, const size_t bufsz) const
-    {
-        switch (mode) {
-        case AddrMode::kInvalid:
-            assert(false);
-            break;
-        case AddrMode::kDn:
-            return snprintf(buf, bufsz, "%%d%d", xn);
-        case AddrMode::kAn:
-            return snprintf(buf, bufsz, "%%a%u", xn);
-        case AddrMode::kAnAddr:
-            return snprintf(buf, bufsz, "%%a%u@", xn);
-        case AddrMode::kAnAddrIncr:
-            return snprintf(buf, bufsz, "%%a%u@+", xn);
-        case AddrMode::kAnAddrDecr:
-            return snprintf(buf, bufsz, "%%a%u@-", xn);
-        case AddrMode::kD16AnAddr:
-            return snprintf(buf, bufsz, "%%a%u@(%d:w)", xn, value);
-        case AddrMode::kD8AnXiAddr:
-            return snprintf(buf, bufsz, "%%a%u@(%d,%%%c%d:%c)", xn, value, r, xi, s);
-        case AddrMode::kWord:
-            return snprintf(buf, bufsz, "0x%x:w", value);
-        case AddrMode::kLong:
-            return snprintf(buf, bufsz, "0x%x:l", value);
-        case AddrMode::kD16PCAddr:
-            return snprintf(buf, bufsz, "%%pc@(%d:w)", value);
-        case AddrMode::kD8PCXiAddr:
-            return snprintf(buf, bufsz, "%%pc@(%d,%%%c%d:%c)", value, r, xi, s);
-        case AddrMode::kImmediate:
-            return snprintf(buf, bufsz, "#%d", value);
-        }
-        assert(false);
-        return -1;
-    }
-};
-
-constexpr AddrModeArg AddrModeArg::Fetch(
+constexpr AddrModeArg FetchAddrModeArg(
         const uint32_t offset, const DataBuffer &code, const int m, const int xn, const char s)
 {
     assert(s == 'b' || s == 'w' || s == 'l');
@@ -297,6 +153,15 @@ constexpr AddrModeArg AddrModeArg::Fetch(
     return AddrModeArg{};
 }
 
+static inline AddrModeArg FetchAddrModeArg(
+        const uint32_t offset, const DataBuffer &code, int16_t instr, char s)
+{
+    const int addrmode = instr & 0x3f;
+    const int m = (addrmode >> 3) & 7;
+    const int xn = addrmode & 7;
+    return FetchAddrModeArg(offset, code, m, xn, s);
+}
+
 static char suffix_from_opsize(OpSize opsize)
 {
     switch (opsize) {
@@ -343,15 +208,15 @@ static inline size_t snprint_reg_mask(
 static size_t disasm_verbatim(
         DisasmNode &node, uint16_t instr, const DataBuffer &)
 {
-    snprintf(node.mnemonic, kMnemonicBufferSize, ".short");
-    snprintf(node.arguments, kArgsBufferSize, "0x%04x", instr);
-    return node.size = kInstructionSizeStepBytes;
+    node.opcode = OpCode::kRaw;
+    node.arg1 = Arg::Raw(instr);
+    return node.size;
 }
 
 static size_t disasm_jsr_jmp(
-        DisasmNode &node, uint16_t instr, const DataBuffer &code, JType jsrjmp)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, JType jtype)
 {
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
+    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn: // 4e80..4e87 / 4ec0..4ec7
@@ -403,23 +268,31 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kImmediate: // 4ebc / 4efc
         return disasm_verbatim(node, instr, code);
     }
-    node.is_call = (jsrjmp == JType::kJsr);
-    const char *mnemonic = (jsrjmp == JType::kJsr) ? "jsr" : "jmp";
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-    const int ret = a.SNPrint(node.arguments, kArgsBufferSize);
-    assert(ret > 0);
-    (void) ret;
+    node.is_call = (jtype == JType::kJsr);
+    node.opcode = (jtype == JType::kJsr) ? OpCode::kJSR : OpCode::kJMP;
+    node.arg1 = Arg::FromAddrModeArg(a);
     return node.size = kInstructionSizeStepBytes + a.Size();
 }
 
-static size_t disasm_ext(
+static inline SizeSpec ToSizeSpec(OpSize opsize) {
+    switch (opsize) {
+    case OpSize::kByte: return SizeSpec::kByte;
+    case OpSize::kWord: return SizeSpec::kWord;
+    case OpSize::kLong: return SizeSpec::kLong;
+    case OpSize::kInvalid: return SizeSpec::kNone;
+    }
+    return SizeSpec::kNone;
+}
+
+static inline size_t disasm_ext(
         DisasmNode &node,
-        const char suffix,
+        const OpSize opsize,
         const AddrModeArg arg)
 {
     assert(arg.mode == AddrMode::kDn);
-    snprintf(node.mnemonic, kMnemonicBufferSize, "ext%c", suffix);
-    arg.SNPrint(node.arguments, kArgsBufferSize);
+    node.opcode = OpCode::kEXT;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(arg);
     return node.size = kInstructionSizeStepBytes + arg.Size();
 }
 
@@ -432,7 +305,7 @@ static size_t disasm_ext_movem(
     const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
     const char suffix = suffix_from_opsize(opsize);
     if (m == 0 && dir == MoveDirection::kRegisterToMemory) {
-        return disasm_ext(node, suffix, AddrModeArg::Dn(xn));
+        return disasm_ext(node, opsize, AddrModeArg::Dn(xn));
     }
     if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
         // Not enough space for regmask, but maybe it is just EXT?
@@ -443,7 +316,7 @@ static size_t disasm_ext_movem(
         // This is just not representable: at least one register must be specified
         return disasm_verbatim(node, instr, code);
     }
-    const auto a = AddrModeArg::Fetch(
+    const auto a = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes * 2, code, m, xn, suffix);
     switch (a.mode) {
     case AddrMode::kInvalid:
@@ -492,7 +365,7 @@ static size_t disasm_ext_movem(
 static size_t disasm_lea(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
-    const auto addr = AddrModeArg::Fetch(
+    const auto addr = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, 'l');
     switch (addr.mode) {
     case AddrMode::kInvalid:
@@ -528,7 +401,7 @@ static size_t disasm_lea(
 static size_t disasm_chk(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
-    const auto src = AddrModeArg::Fetch(
+    const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (src.mode) {
     case AddrMode::kInvalid:
@@ -640,7 +513,7 @@ static inline size_t disasm_movep(
     const unsigned an = instr & 7;
     const char suffix = ((instr >> 6) & 1) ? 'l' : 'w';
     const auto dir = static_cast<MoveDirection>(!((instr >> 7) & 1));
-    const auto addr = AddrModeArg::Fetch(
+    const auto addr = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, 5, an, suffix);
     if (addr.mode == AddrMode::kInvalid) {
         // Boundary check failed, most likely
@@ -673,9 +546,9 @@ static size_t disasm_src_arg_bitops_movep(
     }
     const unsigned dn = ((instr >> 9) & 7);
     const unsigned xn = instr & 7;
-    // Fetch AddrMode::kDn if has_dn_src, otherwise fetch AddrMode::kImmediate
+    // FetchAddrModeArg AddrMode::kDn if has_dn_src, otherwise fetch AddrMode::kImmediate
     // byte
-    const auto src = AddrModeArg::Fetch(
+    const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes,
             code,
             (has_dn_src) ? 0 : 7,
@@ -690,7 +563,7 @@ static size_t disasm_src_arg_bitops_movep(
         assert(dn == 4);
         assert(src.mode == AddrMode::kImmediate);
     }
-    const auto dst = AddrModeArg::Fetch(
+    const auto dst = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, 'w');
     const unsigned opcode = (instr >> 6) & 3;
     switch (dst.mode) {
@@ -794,7 +667,7 @@ static size_t disasm_bitops_movep(
         }
     }
     const char suffix = suffix_from_opsize(opsize);
-    const auto src = AddrModeArg::Fetch(
+    const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, 7, 4, suffix);
     if (src.mode == AddrMode::kInvalid) {
         return disasm_verbatim(node, instr, code);
@@ -804,7 +677,7 @@ static size_t disasm_bitops_movep(
     if (m == 7 && xn == 4) {
         return disasm_logical_immediate_to(node, mnemonic, suffix, src.value);
     }
-    const auto dst = AddrModeArg::Fetch(
+    const auto dst = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, suffix);
     switch (dst.mode) {
     case AddrMode::kInvalid:
@@ -843,7 +716,7 @@ static size_t disasm_move_movea(
 {
     const int size_spec = (instr >> 12) & 3;
     const char suffix = size_spec == 1 ? 'b' : (size_spec == 3 ? 'w' : 'l');
-    const auto src = AddrModeArg::Fetch(
+    const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     if (src.mode == AddrMode::kInvalid) {
         return disasm_verbatim(node, instr, code);
@@ -854,7 +727,7 @@ static size_t disasm_move_movea(
     }
     const int m = (instr >> 6) & 7;
     const int xn = (instr >> 9) & 7;
-    const auto dst = AddrModeArg::Fetch(
+    const auto dst = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, suffix);
     switch (dst.mode) {
     case AddrMode::kInvalid:
@@ -893,7 +766,7 @@ static size_t disasm_move_from_sr(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
     const char suffix = 'w';
-    const auto dst = AddrModeArg::Fetch(
+    const auto dst = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (dst.mode) {
     case AddrMode::kInvalid:
@@ -926,7 +799,7 @@ static size_t disasm_move_to(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, const char* reg)
 {
     const char suffix = 'w';
-    const auto src = AddrModeArg::Fetch(
+    const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (src.mode) {
     case AddrMode::kInvalid:
@@ -987,7 +860,7 @@ static size_t disasm_move_negx_clr_neg_not(
     }
     const char *mnemonic = mnemonic_for_negx_clr_neg_not(opcode);
     const char suffix = suffix_from_opsize(opsize);
-    const auto a = AddrModeArg::Fetch(
+    const auto a = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (a.mode) {
     case AddrMode::kInvalid:
@@ -1024,7 +897,7 @@ static inline size_t disasm_trivial(
 static inline size_t disasm_tas(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
+    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr, code);
@@ -1063,7 +936,7 @@ static size_t disasm_tst_tas_illegal(
         return disasm_tas(node, instr, code);
     }
     const char suffix = suffix_from_opsize(opsize);
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, m, xn, suffix);
+    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, m, xn, suffix);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr, code);
@@ -1108,8 +981,8 @@ static size_t disasm_link_unlink(
         snprintf(node.arguments, kArgsBufferSize, "%%a%u", xn);
         return node.size = kInstructionSizeStepBytes;
     }
-    // Fetch immediate word
-    const auto src = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, 7, 4, 'w');
+    // FetchAddrModeArg immediate word
+    const auto src = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, 7, 4, 'w');
     switch (src.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn:
@@ -1152,7 +1025,7 @@ static size_t disasm_nbcd_swap_pea(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
     const bool is_nbcd = !((instr >> 6) & 1);
-    const auto arg = AddrModeArg::Fetch(
+    const auto arg = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     bool is_swap{};
     switch (arg.mode) {
@@ -1246,7 +1119,7 @@ static size_t disasm_addq_subq(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, OpSize opsize)
 {
     const char suffix = suffix_from_opsize(opsize);
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, suffix);
+    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr, code);
@@ -1358,7 +1231,7 @@ static inline const char *scc_mnemonic_by_condition(Cond condition)
 static size_t disasm_scc_dbcc(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
-    const auto a = AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
+    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, 'w');
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr, code);
@@ -1420,7 +1293,7 @@ static size_t disasm_divu_divs_mulu_muls(
         const char *mnemonic)
 {
     const char suffix = 'w';
-    const auto src = AddrModeArg::Fetch(
+    const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (src.mode) {
     case AddrMode::kInvalid:
@@ -1496,7 +1369,7 @@ static size_t disasm_or_and(
 {
     const char suffix = suffix_from_opsize(opsize);
     const bool dir_to_addr = (instr >> 8) & 1;
-    const auto addr = AddrModeArg::Fetch(
+    const auto addr = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (addr.mode) {
     case AddrMode::kInvalid:
@@ -1574,7 +1447,7 @@ static inline size_t disasm_adda_suba_cmpa(
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
     const char suffix = suffix_from_opsize(opsize);
     assert(suffix != 'b');
-    const auto src = AddrModeArg::Fetch(
+    const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (src.mode) {
     case AddrMode::kInvalid:
@@ -1613,7 +1486,7 @@ static size_t disasm_add_sub_cmp(
         const bool dir_to_addr)
 {
     const char suffix = suffix_from_opsize(opsize);
-    const auto addr = AddrModeArg::Fetch(
+    const auto addr = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (addr.mode) {
     case AddrMode::kInvalid:
@@ -1700,7 +1573,7 @@ static size_t disasm_eor(
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     const char suffix = suffix_from_opsize(opsize);
-    const auto addr = AddrModeArg::Fetch(
+    const auto addr = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, suffix);
     switch (addr.mode) {
     case AddrMode::kInvalid:
@@ -1842,7 +1715,7 @@ static size_t disasm_shift_rotate(
     const unsigned m = (instr >> 5) & 1;
     const char suffix = suffix_from_opsize(opsize);
     const auto dst = (opsize == OpSize::kInvalid)
-        ? AddrModeArg::Fetch(node.offset + kInstructionSizeStepBytes, code, instr, suffix)
+        ? FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, suffix)
         : AddrModeArg::Dn(xn);
     if (opsize == OpSize::kInvalid) {
         switch (dst.mode) {
@@ -1940,6 +1813,277 @@ size_t DisasmNode::Disasm(const DataBuffer &code)
     return m68k_disasm(*this, instr, code);
 }
 
+static const char *ToString(const OpCode opcode, const Condition condition)
+{
+    switch (opcode) {
+    case OpCode::kNone:
+        assert(false);
+        break;
+    case OpCode::kRaw: return ".short";
+    case OpCode::kORI: return "ori";
+    case OpCode::kANDI: return "andi";
+    case OpCode::kSUBI: return "subi";
+    case OpCode::kADDI: return "addi";
+    case OpCode::kEORI: return "eori";
+    case OpCode::kCMPI: return "cmpi";
+    case OpCode::kBTST: return "btst";
+    case OpCode::kBCHG: return "bchg";
+    case OpCode::kBCLR: return "bclr";
+    case OpCode::kBSET: return "bset";
+    case OpCode::kMOVEP: return "movep";
+    case OpCode::kMOVEA: return "movea";
+    case OpCode::kMOVE: return "move";
+    case OpCode::kNEGX: return "negx";
+    case OpCode::kCLR: return "clr";
+    case OpCode::kNEG: return "neg";
+    case OpCode::kNOT: return "not";
+    case OpCode::kEXT: return "ext";
+    case OpCode::kNBCD: return "nbcd";
+    case OpCode::kSWAP: return "swap";
+    case OpCode::kPEA: return "pea";
+    case OpCode::kILLEGAL: return "illegal";
+    case OpCode::kTAS: return "tas";
+    case OpCode::kTST: return "tst";
+    case OpCode::kTRAP: return "trap";
+    case OpCode::kLINK: return "link";
+    case OpCode::kUNLK: return "unkl";
+    case OpCode::kRESET: return "reset";
+    case OpCode::kNOP: return "nop";
+    case OpCode::kSTOP: return "stop";
+    case OpCode::kRTE: return "rte";
+    case OpCode::kRTS: return "rts";
+    case OpCode::kTRAPV: return "trapv";
+    case OpCode::kRTR: return "rtr";
+    case OpCode::kJSR: return "jsr";
+    case OpCode::kJMP: return "jmp";
+    case OpCode::kMOVEM: return "movem";
+    case OpCode::kLEA: return "lea";
+    case OpCode::kCHK: return "chk";
+    case OpCode::kADDQ: return "addq";
+    case OpCode::kSUBQ: return "subq";
+    case OpCode::kScc:
+        switch(condition) {
+        case Condition::kT : return "st";
+        case Condition::kF:  return "sf";
+        case Condition::kHI: return "shi";
+        case Condition::kLS: return "sls";
+        case Condition::kCC: return "scc";
+        case Condition::kCS: return "scs";
+        case Condition::kNE: return "sne";
+        case Condition::kEQ: return "seq";
+        case Condition::kVC: return "svc";
+        case Condition::kVS: return "svs";
+        case Condition::kPL: return "spl";
+        case Condition::kMI: return "smi";
+        case Condition::kGE: return "sge";
+        case Condition::kLT: return "slt";
+        case Condition::kGT: return "sgt";
+        case Condition::kLE: return "sle";
+        }
+        assert(false);
+        break;
+    case OpCode::kDBcc:
+        switch (condition) {
+        case Condition::kT:  return "dbt";
+        case Condition::kF:  return "dbf";
+        case Condition::kHI: return "dbhi";
+        case Condition::kLS: return "dbls";
+        case Condition::kCC: return "dbcc";
+        case Condition::kCS: return "dbcs";
+        case Condition::kNE: return "dbne";
+        case Condition::kEQ: return "dbeq";
+        case Condition::kVC: return "dbvc";
+        case Condition::kVS: return "dbvs";
+        case Condition::kPL: return "dbpl";
+        case Condition::kMI: return "dbmi";
+        case Condition::kGE: return "dbge";
+        case Condition::kLT: return "dblt";
+        case Condition::kGT: return "dbgt";
+        case Condition::kLE: return "dble";
+        }
+        assert(false);
+        break;
+    case OpCode::kBcc:
+        switch (condition) {
+        case Condition::kT:  return "bras";
+        case Condition::kF:  return "bsrs";
+        case Condition::kHI: return "bhis";
+        case Condition::kLS: return "blss";
+        case Condition::kCC: return "bccs";
+        case Condition::kCS: return "bcss";
+        case Condition::kNE: return "bnes";
+        case Condition::kEQ: return "beqs";
+        case Condition::kVC: return "bvcs";
+        case Condition::kVS: return "bvss";
+        case Condition::kPL: return "bpls";
+        case Condition::kMI: return "bmis";
+        case Condition::kGE: return "bges";
+        case Condition::kLT: return "blts";
+        case Condition::kGT: return "bgts";
+        case Condition::kLE: return "bles";
+        }
+        assert(false);
+        break;
+    case OpCode::kMOVEQ: return "moveq";
+    case OpCode::kDIVU: return "divu";
+    case OpCode::kDIVS: return "divs";
+    case OpCode::kSBCD: return "sbcd";
+    case OpCode::kOR: return "or";
+    case OpCode::kSUB: return "sub";
+    case OpCode::kSUBX: return "subx";
+    case OpCode::kSUBA: return "suba";
+    case OpCode::kEOR: return "eor";
+    case OpCode::kCMPM: return "cmpm";
+    case OpCode::kCMP: return "cmp";
+    case OpCode::kCMPA: return "cmpa";
+    case OpCode::kMULU: return "mulu";
+    case OpCode::kMULS: return "muls";
+    case OpCode::kABCD: return "abcd";
+    case OpCode::kEXG: return "exg";
+    case OpCode::kAND: return "and";
+    case OpCode::kADD: return "add";
+    case OpCode::kADDX: return "addx";
+    case OpCode::kADDA: return "adda";
+    case OpCode::kASR: return "asr";
+    case OpCode::kASL: return "asl";
+    case OpCode::kLSR: return "lsr";
+    case OpCode::kLSL: return "lsl";
+    case OpCode::kROXR: return "roxr";
+    case OpCode::kROXL: return "roxl";
+    case OpCode::kROR: return "ror";
+    case OpCode::kROL: return "rol";
+    }
+    assert(false);
+    return "?";
+}
+
+static const char *ToString(const SizeSpec s)
+{
+    switch (s) {
+    case SizeSpec::kNone: return "";
+    case SizeSpec::kByte: return "b";
+    case SizeSpec::kWord: return "w";
+    case SizeSpec::kLong: return "l";
+    }
+    assert(false);
+    return "";
+}
+
+static int OpcodeSNPrintf(
+        char *buf, size_t bufsz, const OpCode opcode, const Condition condition, const SizeSpec size_spec)
+{
+    return snprintf(buf, bufsz, "%s%s", ToString(opcode, condition), ToString(size_spec));
+}
+
+static char RegChar(RegKind k)
+{
+    switch (k) {
+    case RegKind::kDnWord:
+    case RegKind::kDnLong:
+        return 'd';
+    case RegKind::kAnWord:
+    case RegKind::kAnLong:
+        return 'a';
+    }
+    assert(false);
+    return 'd';
+}
+
+static char SizeSpecChar(RegKind k)
+{
+    switch (k) {
+    case RegKind::kDnWord:
+        return 'w';
+    case RegKind::kDnLong:
+        return 'l';
+    case RegKind::kAnWord:
+        return 'w';
+    case RegKind::kAnLong:
+        return 'l';
+    }
+    assert(false);
+    return 'w';
+}
+
+int Arg::SNPrint(char *buf, size_t bufsz, const Settings &) const
+{
+    switch (type) {
+    case ArgType::kNone:
+        assert(false);
+        break;
+    case ArgType::kRaw:
+        return snprintf(buf, bufsz, "0x%04x", uword);
+    case ArgType::kDn:
+        return snprintf(buf, bufsz, "%%d%d", xn);
+    case ArgType::kAn:
+        return snprintf(buf, bufsz, "%%a%u", xn);
+    case ArgType::kAnAddr:
+        return snprintf(buf, bufsz, "%%a%u@", xn);
+    case ArgType::kAnAddrIncr:
+        return snprintf(buf, bufsz, "%%a%u@+", xn);
+    case ArgType::kAnAddrDecr:
+        return snprintf(buf, bufsz, "%%a%u@-", xn);
+    case ArgType::kD16AnAddr:
+        return snprintf(buf, bufsz, "%%a%u@(%d:w)", d16_an.an, d16_an.d16);
+    case ArgType::kD8AnXiAddr:
+        return snprintf(
+                buf, bufsz, "%%a%u@(%d,%%%c%d:%c)",
+                d8_an_xi.an,
+                d8_an_xi.d8,
+                RegChar(d8_an_xi.kind),
+                d8_an_xi.xi,
+                SizeSpecChar(d8_an_xi.kind));
+    case ArgType::kWord:
+        return snprintf(buf, bufsz, "0x%x:w", lword);
+    case ArgType::kLong:
+        return snprintf(buf, bufsz, "0x%x:l", lword);
+    case ArgType::kD16PCAddr:
+        return snprintf(buf, bufsz, "%%pc@(%d:w)", d16_pc.d16);
+    case ArgType::kD8PCXiAddr:
+        return snprintf(
+                buf, bufsz, "%%pc@(%d,%%%c%d:%c)",
+                d8_pc_xi.d8,
+                RegChar(d8_pc_xi.kind),
+                d8_pc_xi.xi,
+                SizeSpecChar(d8_pc_xi.kind));
+    case ArgType::kImmediate:
+        return snprintf(buf, bufsz, "#%d", lword);
+    case ArgType::kRegMask:
+        return snprint_reg_mask(buf, bufsz, uword, false);
+    case ArgType::kRegMaskPredecrement:
+        return snprint_reg_mask(buf, bufsz, uword, true);
+    case ArgType::kDisplacement:
+        return snprintf(buf, bufsz,  ".%s%d", lword >= 0 ? "+" : "", lword);
+    case ArgType::kCCR:
+        return snprintf(buf, bufsz,  "%%ccr");
+    case ArgType::kSR:
+        return snprintf(buf, bufsz,  "%%sr");
+    case ArgType::kUSP:
+        return snprintf(buf, bufsz,  "%%usp");
+    }
+    assert(false);
+    return -1;
+}
+
+int DisasmNode::FPrint(FILE* stream, const Settings &settings) const
+{
+    assert(opcode != OpCode::kNone);
+    char mnemonic_str[kMnemonicBufferSize]{};
+    OpcodeSNPrintf(mnemonic_str, kMnemonicBufferSize, opcode, condition, size_spec);
+    if (arg1.type != ArgType::kNone) {
+        char arg1_str[kArgsBufferSize]{};
+        arg1.SNPrint(arg1_str, kArgsBufferSize, settings);
+        if (arg2.type != ArgType::kNone) {
+            char arg2_str[kArgsBufferSize]{};
+            arg2.SNPrint(arg2_str, kArgsBufferSize, settings);
+            return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
+        } else {
+            return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);
+        }
+    } else {
+        return fprintf(stream, "  %s", mnemonic_str);
+    }
+}
 
 void DisasmNode::AddReferencedBy(uint32_t offset, ReferenceType type)
 {
