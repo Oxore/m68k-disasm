@@ -93,13 +93,13 @@ struct AddrModeArg {
     {
         return AddrModeArg{AddrMode::kD8AnXiAddr, xn, r, xi, s, d8};
     }
-    static constexpr AddrModeArg Word(uint8_t xn, int16_t w)
+    static constexpr AddrModeArg Word(int16_t w)
     {
-        return AddrModeArg{AddrMode::kWord, xn, 0, 0, OpSize::kWord, w};
+        return AddrModeArg{AddrMode::kWord, 0, 0, 0, OpSize::kWord, w};
     }
-    static constexpr AddrModeArg Long(uint8_t xn, int32_t l)
+    static constexpr AddrModeArg Long(int32_t l)
     {
-        return AddrModeArg{AddrMode::kLong, xn, 0, 0, OpSize::kWord, l};
+        return AddrModeArg{AddrMode::kLong, 1, 0, 0, OpSize::kWord, l};
     }
     static constexpr AddrModeArg D16PCAddr(uint8_t xn, int16_t d16)
     {
@@ -110,9 +110,9 @@ struct AddrModeArg {
     {
         return AddrModeArg{AddrMode::kD8PCXiAddr, xn, r, xi, s, d8};
     }
-    static constexpr AddrModeArg Immediate(uint8_t xn, OpSize s, int32_t value)
+    static constexpr AddrModeArg Immediate(OpSize s, int32_t value)
     {
-        return AddrModeArg{AddrMode::kImmediate, xn, 0, 0, s, value};
+        return AddrModeArg{AddrMode::kImmediate, 4, 0, 0, s, value};
     }
     int SNPrint(char *const buf, const size_t bufsz) const
     {
@@ -331,14 +331,20 @@ struct Arg {
         a.lword = displacement;
         return a;
     }
+    static constexpr Self Immediate(int32_t value) {
+        Arg a{ArgType::kImmediate, 0};
+        a.lword = value;
+        return a;
+    }
     static constexpr Self CCR() { return Arg{ArgType::kCCR, 0}; }
     static constexpr Self SR() { return Arg{ArgType::kSR, 0}; }
-private:
-    static constexpr Self addrModeXn(const ArgType type, const uint8_t xn) {
+    static constexpr Self USP() { return Arg{ArgType::kUSP, 0}; }
+    static constexpr Self AddrModeXn(const ArgType type, const uint8_t xn) {
         Arg a{type, 0};
         a.xn = xn;
         return a;
     }
+private:
     static constexpr Self addrModeD16AnAddr(const D16AnPCAddr d16_an) {
         Arg a{ArgType::kD16AnAddr, 0};
         a.d16_an = d16_an;
@@ -393,15 +399,15 @@ public:
         case AddrMode::kInvalid:
             return Arg{};
         case AddrMode::kDn:
-            return addrModeXn(ArgType::kDn, arg.xn);
+            return AddrModeXn(ArgType::kDn, arg.xn);
         case AddrMode::kAn:
-            return addrModeXn(ArgType::kAn, arg.xn);
+            return AddrModeXn(ArgType::kAn, arg.xn);
         case AddrMode::kAnAddr:
-            return addrModeXn(ArgType::kAnAddr, arg.xn);
+            return AddrModeXn(ArgType::kAnAddr, arg.xn);
         case AddrMode::kAnAddrIncr:
-            return addrModeXn(ArgType::kAnAddrIncr, arg.xn);
+            return AddrModeXn(ArgType::kAnAddrIncr, arg.xn);
         case AddrMode::kAnAddrDecr:
-            return addrModeXn(ArgType::kAnAddrDecr, arg.xn);
+            return AddrModeXn(ArgType::kAnAddrDecr, arg.xn);
         case AddrMode::kD16AnAddr:
             return addrModeD16AnAddr(D16AnPCAddr{arg.xn, static_cast<int16_t>(arg.value)});
         case AddrMode::kD8AnXiAddr:
