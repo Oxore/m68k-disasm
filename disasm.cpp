@@ -1072,7 +1072,6 @@ static size_t disasm_chunk_4(
 static size_t disasm_addq_subq(
         DisasmNode &node, uint16_t instr, const DataBuffer &code, OpSize opsize)
 {
-    const char suffix = suffix_from_opsize(opsize);
     const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
@@ -1100,38 +1099,12 @@ static size_t disasm_addq_subq(
         // Does not exist
         return disasm_verbatim(node, instr, code);
     }
-    const char *mnemonic = (instr >> 8) & 1 ? "subq" : "addq";
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
     const unsigned imm = ((uint8_t((instr >> 9) & 7) - 1) & 7) + 1;
-    const int ret = snprintf(node.arguments, kArgsBufferSize, "#%u,", imm);
-    assert(ret > 0);
-    assert(static_cast<unsigned>(ret) == strlen("#8,"));
-    a.SNPrint(node.arguments + ret, kArgsBufferSize - ret);
+    node.opcode = ((instr >> 8) & 1) ? OpCode::kSUBQ : OpCode::kADDQ;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::Immediate(imm);
+    node.arg2 = Arg::FromAddrModeArg(a);
     return node.size = kInstructionSizeStepBytes + a.Size();
-}
-
-static inline const char *dbcc_mnemonic_by_condition(Cond condition)
-{
-    switch (condition) {
-    case Cond::kT:  return "dbt";  // 50c8..50cf
-    case Cond::kF:  return "dbf";  // 51c8..51cf
-    case Cond::kHI: return "dbhi"; // 52c8..52cf
-    case Cond::kLS: return "dbls"; // 53c8..53cf
-    case Cond::kCC: return "dbcc"; // 54c8..54cf
-    case Cond::kCS: return "dbcs"; // 55c8..55cf
-    case Cond::kNE: return "dbne"; // 56c8..56cf
-    case Cond::kEQ: return "dbeq"; // 57c8..57cf
-    case Cond::kVC: return "dbvc"; // 58c8..58cf
-    case Cond::kVS: return "dbvs"; // 59c8..59cf
-    case Cond::kPL: return "dbpl"; // 5ac8..5acf
-    case Cond::kMI: return "dbmi"; // 5bc8..5bcf
-    case Cond::kGE: return "dbge"; // 5cc8..5ccf
-    case Cond::kLT: return "dblt"; // 5dc8..5dcf
-    case Cond::kGT: return "dbgt"; // 5ec8..5ecf
-    case Cond::kLE: return "dble"; // 5fc8..5fcf
-    }
-    assert(false);
-    return "?";
 }
 
 static size_t disasm_dbcc(DisasmNode &node, uint16_t instr, const DataBuffer &code)
@@ -1140,46 +1113,19 @@ static size_t disasm_dbcc(DisasmNode &node, uint16_t instr, const DataBuffer &co
         return disasm_verbatim(node, instr, code);
     }
     const int16_t dispmt_raw = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-    if (dispmt_raw % kInstructionSizeStepBytes) {
+    if (dispmt_raw % static_cast<int16_t>(kInstructionSizeStepBytes)) {
         return disasm_verbatim(node, instr, code);
     }
-    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
-    const char *mnemonic = dbcc_mnemonic_by_condition(condition);
-    const int dn = (instr & 7);
-    const uint32_t branch_addr = static_cast<uint32_t>(
-            node.offset + dispmt_raw + kInstructionSizeStepBytes);
-    node.branch_addr = branch_addr;
-    node.has_branch_addr = true;
     const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s", mnemonic);
-    const char * const sign = dispmt >= 0 ? "+" : "";
+    node.branch_addr = static_cast<uint32_t>(node.offset + dispmt);
+    node.has_branch_addr = true;
+    node.opcode = OpCode::kDBcc;
+    node.condition = ToCondition(static_cast<Cond>((instr >> 8) & 0xf));
+    node.size_spec = SizeSpec::kNone;
+    node.arg1 = Arg::AddrModeXn(ArgType::kDn, (instr & 7));
+    node.arg2 = Arg::Displacement(dispmt);
     // FIXME support s.rel_marks option for this instruction
-    snprintf(node.arguments, kArgsBufferSize, "%%d%d,.%s%d", dn, sign, dispmt);
     return node.size = kInstructionSizeStepBytes * 2;
-}
-
-static inline const char *scc_mnemonic_by_condition(Cond condition)
-{
-    switch (condition) {
-    case Cond::kT:  return "st";  // 50cx..50fx
-    case Cond::kF:  return "sf";  // 51cx..51fx
-    case Cond::kHI: return "shi"; // 52cx..52fx
-    case Cond::kLS: return "sls"; // 53cx..53fx
-    case Cond::kCC: return "scc"; // 54cx..54fx
-    case Cond::kCS: return "scs"; // 55cx..55fx
-    case Cond::kNE: return "sne"; // 56cx..56fx
-    case Cond::kEQ: return "seq"; // 57cx..57fx
-    case Cond::kVC: return "svc"; // 58cx..58fx
-    case Cond::kVS: return "svs"; // 59cx..59fx
-    case Cond::kPL: return "spl"; // 5acx..5afx
-    case Cond::kMI: return "smi"; // 5bcx..5bfx
-    case Cond::kGE: return "sge"; // 5ccx..5cfx
-    case Cond::kLT: return "slt"; // 5dcx..5dfx
-    case Cond::kGT: return "sgt"; // 5ecx..5efx
-    case Cond::kLE: return "sle"; // 5fcx..5ffx
-    }
-    assert(false);
-    return "?";
 }
 
 static size_t disasm_scc_dbcc(
@@ -1208,10 +1154,10 @@ static size_t disasm_scc_dbcc(
         // Does not exist
         return disasm_verbatim(node, instr, code);
     }
-    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
-    const char *mnemonic = scc_mnemonic_by_condition(condition);
-    snprintf(node.mnemonic, kMnemonicBufferSize, mnemonic);
-    a.SNPrint(node.arguments, kArgsBufferSize);
+    node.opcode = OpCode::kScc;
+    node.condition = ToCondition(static_cast<Cond>((instr >> 8) & 0xf));
+    node.size_spec = SizeSpec::kNone;
+    node.arg1 = Arg::FromAddrModeArg(a);
     return node.size = kInstructionSizeStepBytes + a.Size();
 }
 

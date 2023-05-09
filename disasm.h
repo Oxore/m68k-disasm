@@ -326,7 +326,7 @@ struct Arg {
         a.uword = regmask;
         return a;
     }
-    static constexpr Self Displacement(const int16_t displacement) {
+    static constexpr Self Displacement(const int32_t displacement) {
         Arg a{ArgType::kDisplacement, 0};
         a.lword = displacement;
         return a;
