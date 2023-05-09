@@ -29,7 +29,7 @@ enum class ShiftKind: int {
     kRotate = 3,
 };
 
-enum class Cond {
+enum class Cond: uint8_t {
     kT = 0,
     kF = 1,
     kHI = 2,
@@ -47,8 +47,6 @@ enum class Cond {
     kGT = 14,
     kLE = 15,
 };
-
-
 
 constexpr AddrModeArg FetchAddrModeArg(
         const uint32_t offset, const DataBuffer &code, const int m, const int xn, const OpSize s)
@@ -171,6 +169,7 @@ static size_t disasm_verbatim(
         DisasmNode &node, uint16_t instr, const DataBuffer &)
 {
     node.opcode = OpCode::kRaw;
+    node.size_spec = SizeSpec::kNone;
     node.arg1 = Arg::Raw(instr);
     return node.size;
 }
@@ -232,6 +231,7 @@ static size_t disasm_jsr_jmp(
     }
     node.is_call = (jtype == JType::kJsr);
     node.opcode = (jtype == JType::kJsr) ? OpCode::kJSR : OpCode::kJMP;
+    node.size_spec = SizeSpec::kNone;
     node.arg1 = Arg::FromAddrModeArg(a);
     return node.size = kInstructionSizeStepBytes + a.Size();
 }
@@ -310,8 +310,8 @@ static size_t disasm_ext_movem(
     case AddrMode::kImmediate: // 4ebc / 4efc
         return disasm_verbatim(node, instr, code);
     }
-    node.size_spec = ToSizeSpec(opsize);
     node.opcode = OpCode::kMOVEM;
+    node.size_spec = ToSizeSpec(opsize);
     if (dir == MoveDirection::kMemoryToRegister) {
         node.arg1 = Arg::FromAddrModeArg(a);
         node.arg2 = (a.mode == AddrMode::kAnAddrDecr) ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
@@ -349,12 +349,10 @@ static size_t disasm_lea(
     }
     const unsigned an = ((instr >> 9) & 7);
     const auto reg = AddrModeArg::An(an);
-    char addr_str[32]{};
-    char reg_str[32]{};
-    addr.SNPrint(addr_str, sizeof(addr_str));
-    reg.SNPrint(reg_str, sizeof(reg_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "leal");
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+    node.opcode = OpCode::kLEA;
+    node.size_spec = SizeSpec::kLong;
+    node.arg1 = Arg::FromAddrModeArg(addr);
+    node.arg2 = Arg::FromAddrModeArg(reg);
     return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
@@ -385,50 +383,44 @@ static size_t disasm_chk(
     }
     const unsigned dn = ((instr >> 9) & 7);
     const auto dst = AddrModeArg::Dn(dn);
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "chkw");
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.opcode = OpCode::kCHK;
+    node.size_spec = SizeSpec::kWord;
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
-static inline const char *bcc_mnemonic_by_condition(Cond condition)
+static Condition ToCondition(Cond cond)
 {
-    switch (condition) {
-    case Cond::kT:  return "bra"; // 60xx
-    case Cond::kF:  return "bsr"; // 61xx
-    case Cond::kHI: return "bhi"; // 62xx
-    case Cond::kLS: return "bls"; // 63xx
-    case Cond::kCC: return "bcc"; // 64xx
-    case Cond::kCS: return "bcs"; // 65xx
-    case Cond::kNE: return "bne"; // 66xx
-    case Cond::kEQ: return "beq"; // 67xx
-    case Cond::kVC: return "bvc"; // 68xx
-    case Cond::kVS: return "bvs"; // 69xx
-    case Cond::kPL: return "bpl"; // 6axx
-    case Cond::kMI: return "bmi"; // 6bxx
-    case Cond::kGE: return "bge"; // 6cxx
-    case Cond::kLT: return "blt"; // 6dxx
-    case Cond::kGT: return "bgt"; // 6exx
-    case Cond::kLE: return "ble"; // 6fxx
+    switch (cond) {
+    case Cond::kT:  return Condition::kT;
+    case Cond::kF:  return Condition::kF;
+    case Cond::kHI: return Condition::kHI;
+    case Cond::kLS: return Condition::kLS;
+    case Cond::kCC: return Condition::kCC;
+    case Cond::kCS: return Condition::kCS;
+    case Cond::kNE: return Condition::kNE;
+    case Cond::kEQ: return Condition::kEQ;
+    case Cond::kVC: return Condition::kVC;
+    case Cond::kVS: return Condition::kVS;
+    case Cond::kPL: return Condition::kPL;
+    case Cond::kMI: return Condition::kMI;
+    case Cond::kGE: return Condition::kGE;
+    case Cond::kLT: return Condition::kLT;
+    case Cond::kGT: return Condition::kGT;
+    case Cond::kLE: return Condition::kLE;
     }
-    assert(false);
-    return "?";
+    return Condition::kT;
 }
 
 static size_t disasm_bra_bsr_bcc(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
-    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
-    const char *mnemonic = bcc_mnemonic_by_condition(condition);
-    // False condition Indicates BSR
-    int dispmt = static_cast<int8_t>(instr & 0xff);
-    if (dispmt % kInstructionSizeStepBytes) {
+    int16_t dispmt = static_cast<int8_t>(instr & 0xff);
+    if (dispmt % static_cast<int16_t>(kInstructionSizeStepBytes)) {
         return disasm_verbatim(node, instr, code);
     }
-    const char suffix = dispmt ? 's' : 'w';
+    node.size_spec = dispmt ? SizeSpec::kShort : SizeSpec::kWord;
     if (dispmt == 0) {
         // Check the boundaries
         if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
@@ -442,15 +434,17 @@ static size_t disasm_bra_bsr_bcc(
     } else {
         node.size = kInstructionSizeStepBytes;
     }
-    node.is_call = (condition == Cond::kF);
     dispmt += kInstructionSizeStepBytes;
     const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
+    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
+    // False condition Indicates BSR
+    node.is_call = (condition == Cond::kF);
+    node.opcode = OpCode::kBcc;
+    node.condition = ToCondition(condition);
+    node.arg1 = Arg::Displacement(dispmt);
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
-    const char * const sign = dispmt >= 0 ? "+" : "";
     // FIXME support s.rel_marks option for this instruction
-    snprintf(node.arguments, kArgsBufferSize, ".%s%d", sign, dispmt);
     return node.size;
 }
 
@@ -1873,22 +1867,22 @@ static const char *ToString(const OpCode opcode, const Condition condition)
         break;
     case OpCode::kBcc:
         switch (condition) {
-        case Condition::kT:  return "bras";
-        case Condition::kF:  return "bsrs";
-        case Condition::kHI: return "bhis";
-        case Condition::kLS: return "blss";
-        case Condition::kCC: return "bccs";
-        case Condition::kCS: return "bcss";
-        case Condition::kNE: return "bnes";
-        case Condition::kEQ: return "beqs";
-        case Condition::kVC: return "bvcs";
-        case Condition::kVS: return "bvss";
-        case Condition::kPL: return "bpls";
-        case Condition::kMI: return "bmis";
-        case Condition::kGE: return "bges";
-        case Condition::kLT: return "blts";
-        case Condition::kGT: return "bgts";
-        case Condition::kLE: return "bles";
+        case Condition::kT:  return "bra";
+        case Condition::kF:  return "bsr";
+        case Condition::kHI: return "bhi";
+        case Condition::kLS: return "bls";
+        case Condition::kCC: return "bcc";
+        case Condition::kCS: return "bcs";
+        case Condition::kNE: return "bne";
+        case Condition::kEQ: return "beq";
+        case Condition::kVC: return "bvc";
+        case Condition::kVS: return "bvs";
+        case Condition::kPL: return "bpl";
+        case Condition::kMI: return "bmi";
+        case Condition::kGE: return "bge";
+        case Condition::kLT: return "blt";
+        case Condition::kGT: return "bgt";
+        case Condition::kLE: return "ble";
         }
         assert(false);
         break;
@@ -1930,6 +1924,7 @@ static const char *ToString(const SizeSpec s)
     switch (s) {
     case SizeSpec::kNone: return "";
     case SizeSpec::kByte: return "b";
+    case SizeSpec::kShort: return "s";
     case SizeSpec::kWord: return "w";
     case SizeSpec::kLong: return "l";
     }

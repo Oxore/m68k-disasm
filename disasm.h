@@ -249,6 +249,7 @@ enum class Condition: uint8_t {
 enum class SizeSpec: uint8_t {
     kNone,
     kByte,
+    kShort,
     kWord,
     kLong,
 };
@@ -325,6 +326,11 @@ struct Arg {
         a.uword = regmask;
         return a;
     }
+    static constexpr Self Displacement(const int16_t displacement) {
+        Arg a{ArgType::kDisplacement, 0};
+        a.lword = displacement;
+        return a;
+    }
 private:
     static constexpr Self addrModeXn(const ArgType type, const uint8_t xn) {
         Arg a{type, 0};
@@ -366,7 +372,7 @@ private:
         a.lword = value;
         return a;
     }
-    static constexpr RegKind RegKindFromRegCharSizeChar(char r, OpSize s)
+    static constexpr RegKind regKindFromRegCharSizeChar(char r, OpSize s)
     {
         if (r == 'd' && s == OpSize::kWord) {
             return RegKind::kDnWord;
@@ -398,7 +404,7 @@ public:
             return addrModeD16AnAddr(D16AnPCAddr{arg.xn, static_cast<int16_t>(arg.value)});
         case AddrMode::kD8AnXiAddr:
             return addrModeD8AnAddr(D8AnPCXiAddr{
-                    RegKindFromRegCharSizeChar(arg.r, arg.s),
+                    regKindFromRegCharSizeChar(arg.r, arg.s),
                     arg.xn,
                     arg.xi,
                     static_cast<int8_t>(arg.value),
@@ -411,7 +417,7 @@ public:
             return addrModeD16PCAddr(D16AnPCAddr{0, static_cast<int16_t>(arg.value)});
         case AddrMode::kD8PCXiAddr:
             return addrModeD8PCAddr(D8AnPCXiAddr{
-                    RegKindFromRegCharSizeChar(arg.r, arg.s),
+                    regKindFromRegCharSizeChar(arg.r, arg.s),
                     0,
                     arg.xi,
                     static_cast<int8_t>(arg.value),
