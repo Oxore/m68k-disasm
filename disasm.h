@@ -6,8 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-// TODO remove this include from the header when AddrModeArg will get rid of SNPrint
-#include <cassert>
 
 enum class AddrMode: uint8_t {
     kInvalid = 0,
@@ -115,40 +113,6 @@ struct AddrModeArg {
     static constexpr AddrModeArg Immediate(OpSize s, int32_t value)
     {
         return AddrModeArg{AddrMode::kImmediate, 4, 0, 0, s, value};
-    }
-    int SNPrint(char *const buf, const size_t bufsz) const
-    {
-        switch (mode) {
-        case AddrMode::kInvalid:
-            assert(false);
-            break;
-        case AddrMode::kDn:
-            return snprintf(buf, bufsz, "%%d%d", xn);
-        case AddrMode::kAn:
-            return snprintf(buf, bufsz, "%%a%u", xn);
-        case AddrMode::kAnAddr:
-            return snprintf(buf, bufsz, "%%a%u@", xn);
-        case AddrMode::kAnAddrIncr:
-            return snprintf(buf, bufsz, "%%a%u@+", xn);
-        case AddrMode::kAnAddrDecr:
-            return snprintf(buf, bufsz, "%%a%u@-", xn);
-        case AddrMode::kD16AnAddr:
-            return snprintf(buf, bufsz, "%%a%u@(%d:w)", xn, value);
-        case AddrMode::kD8AnXiAddr:
-            return snprintf(buf, bufsz, "%%a%u@(%d,%%%c%d:%c)", xn, value, r, xi, (s == OpSize::kLong) ? 'l' : 'w');
-        case AddrMode::kWord:
-            return snprintf(buf, bufsz, "0x%x:w", value);
-        case AddrMode::kLong:
-            return snprintf(buf, bufsz, "0x%x:l", value);
-        case AddrMode::kD16PCAddr:
-            return snprintf(buf, bufsz, "%%pc@(%d:w)", value);
-        case AddrMode::kD8PCXiAddr:
-            return snprintf(buf, bufsz, "%%pc@(%d,%%%c%d:%c)", value, r, xi, (s == OpSize::kLong) ? 'l' : 'w');
-        case AddrMode::kImmediate:
-            return snprintf(buf, bufsz, "#%d", value);
-        }
-        assert(false);
-        return -1;
     }
 };
 
