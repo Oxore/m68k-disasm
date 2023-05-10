@@ -37,7 +37,7 @@ struct AddrModeArg {
     uint8_t xn{}; /// Xn register number: 0..7
     char r{}; /// Xi register type specifier letter: either 'd' or 'a'
     uint8_t xi{}; /// Xi register number: 0..7
-    OpSize s{}; /// Size spec letter of Xi or imm: either 'w' or 'l'
+    OpSize s{}; /// Size specifier of Xi or imm
     int32_t value{}; /// Word, Long or Immediate
     /// Size of the extension: 0, 2 or 4 bytes
     constexpr size_t Size() const
@@ -118,7 +118,7 @@ struct AddrModeArg {
 
 enum class OpCode: uint8_t {
     kNone,
-    kRaw,
+    kRaw, ///< Emits ".short"
     kORI,
     kANDI,
     kSUBI,
@@ -212,10 +212,9 @@ enum class Condition: uint8_t {
     kLE = 15,
 };
 
-
 enum class ArgType: uint8_t {
     kNone,
-    kRaw,
+    kRaw, ///< Emits "0xXXXX" for ".short"
     kDn, ///< Dn
     kAn, ///< An
     kAnAddr, ///< (An)
