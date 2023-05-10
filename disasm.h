@@ -30,6 +30,8 @@ enum class OpSize: int {
     kWord = 1,
     kLong = 2,
     kInvalid = 3,
+    kNone = kInvalid,
+    kShort, ///< Semantically is the same as kByte, pseudosize, used for Bcc
 };
 
 struct AddrModeArg {
@@ -246,14 +248,6 @@ enum class Condition: uint8_t {
     kLE = 15,
 };
 
-
-enum class SizeSpec: uint8_t {
-    kNone,
-    kByte,
-    kShort,
-    kWord,
-    kLong,
-};
 
 enum class ArgType: uint8_t {
     kNone,
@@ -483,7 +477,7 @@ struct DisasmNode {
     ReferenceNode *last_ref_by{};
     OpCode opcode{OpCode::kNone}; ///< Should replace `mnemonic` field
     /// Size specifier, the suffix `b`, `w` or `l`
-    SizeSpec size_spec{SizeSpec::kNone};
+    OpSize size_spec{OpSize::kNone};
     Condition condition{Condition::kT}; ///< For Scc, Bcc and Dbcc
     Arg arg1{}, arg2{}; ///< Should replace `arguments` field
 
