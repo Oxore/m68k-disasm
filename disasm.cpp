@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 
-enum class JType {
+enum class JKind {
     kJsr,
     kJmp,
 };
@@ -27,25 +27,6 @@ enum class ShiftKind: int {
     kLogicalShift = 1,
     kRotateX = 2,
     kRotate = 3,
-};
-
-enum class Cond: uint8_t {
-    kT = 0,
-    kF = 1,
-    kHI = 2,
-    kLS = 3,
-    kCC = 4,
-    kCS = 5,
-    kNE = 6,
-    kEQ = 7,
-    kVC = 8,
-    kVS = 9,
-    kPL = 10,
-    kMI = 11,
-    kGE = 12,
-    kLT = 13,
-    kGT = 14,
-    kLE = 15,
 };
 
 constexpr AddrModeArg FetchImmediate(const uint32_t offset, const DataBuffer &code, const OpSize s)
@@ -182,7 +163,7 @@ static size_t disasm_verbatim(
 }
 
 static size_t disasm_jsr_jmp(
-        DisasmNode &node, uint16_t instr, const DataBuffer &code, JType jtype)
+        DisasmNode &node, uint16_t instr, const DataBuffer &code, JKind jtype)
 {
     const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, OpSize::kWord);
     switch (a.mode) {
@@ -236,8 +217,8 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kImmediate: // 4ebc / 4efc
         return disasm_verbatim(node, instr, code);
     }
-    node.is_call = (jtype == JType::kJsr);
-    node.opcode = (jtype == JType::kJsr) ? OpCode::kJSR : OpCode::kJMP;
+    node.is_call = (jtype == JKind::kJsr);
+    node.opcode = (jtype == JKind::kJsr) ? OpCode::kJSR : OpCode::kJMP;
     node.size_spec = SizeSpec::kNone;
     node.arg1 = Arg::FromAddrModeArg(a);
     return node.size = kInstructionSizeStepBytes + a.Size();
@@ -397,29 +378,6 @@ static size_t disasm_chk(
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
-static Condition ToCondition(Cond cond)
-{
-    switch (cond) {
-    case Cond::kT:  return Condition::kT;
-    case Cond::kF:  return Condition::kF;
-    case Cond::kHI: return Condition::kHI;
-    case Cond::kLS: return Condition::kLS;
-    case Cond::kCC: return Condition::kCC;
-    case Cond::kCS: return Condition::kCS;
-    case Cond::kNE: return Condition::kNE;
-    case Cond::kEQ: return Condition::kEQ;
-    case Cond::kVC: return Condition::kVC;
-    case Cond::kVS: return Condition::kVS;
-    case Cond::kPL: return Condition::kPL;
-    case Cond::kMI: return Condition::kMI;
-    case Cond::kGE: return Condition::kGE;
-    case Cond::kLT: return Condition::kLT;
-    case Cond::kGT: return Condition::kGT;
-    case Cond::kLE: return Condition::kLE;
-    }
-    return Condition::kT;
-}
-
 static size_t disasm_bra_bsr_bcc(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
@@ -443,11 +401,11 @@ static size_t disasm_bra_bsr_bcc(
     }
     dispmt += kInstructionSizeStepBytes;
     const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
-    Cond condition = static_cast<Cond>((instr >> 8) & 0xf);
+    Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     // False condition Indicates BSR
-    node.is_call = (condition == Cond::kF);
+    node.is_call = (condition == Condition::kF);
     node.opcode = OpCode::kBcc;
-    node.condition = ToCondition(condition);
+    node.condition = condition;
     node.arg1 = Arg::Displacement(dispmt);
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
@@ -1056,9 +1014,9 @@ static size_t disasm_chunk_4(
     } else if (instr == 0x4e77) {
         return disasm_trivial(node, instr, code, OpCode::kRTR);
     } else if ((instr & 0xffc0) == 0x4e80) {
-        return disasm_jsr_jmp(node, instr, code, JType::kJsr);
+        return disasm_jsr_jmp(node, instr, code, JKind::kJsr);
     } else if ((instr & 0xffc0) == 0x4ec0) {
-        return disasm_jsr_jmp(node, instr, code, JType::kJmp);
+        return disasm_jsr_jmp(node, instr, code, JKind::kJmp);
     } else if ((instr & 0xfb80) == 0x4880) {
         return disasm_ext_movem(node, instr, code);
     } else if ((instr & 0xf1c0) == 0x41c0) {
@@ -1120,7 +1078,7 @@ static size_t disasm_dbcc(DisasmNode &node, uint16_t instr, const DataBuffer &co
     node.branch_addr = static_cast<uint32_t>(node.offset + dispmt);
     node.has_branch_addr = true;
     node.opcode = OpCode::kDBcc;
-    node.condition = ToCondition(static_cast<Cond>((instr >> 8) & 0xf));
+    node.condition = static_cast<Condition>((instr >> 8) & 0xf);
     node.size_spec = SizeSpec::kNone;
     node.arg1 = Arg::AddrModeXn(ArgType::kDn, (instr & 7));
     node.arg2 = Arg::Displacement(dispmt);
@@ -1155,7 +1113,7 @@ static size_t disasm_scc_dbcc(
         return disasm_verbatim(node, instr, code);
     }
     node.opcode = OpCode::kScc;
-    node.condition = ToCondition(static_cast<Cond>((instr >> 8) & 0xf));
+    node.condition = static_cast<Condition>((instr >> 8) & 0xf);
     node.size_spec = SizeSpec::kNone;
     node.arg1 = Arg::FromAddrModeArg(a);
     return node.size = kInstructionSizeStepBytes + a.Size();

@@ -228,23 +228,24 @@ enum class OpCode: uint8_t {
 };
 
 enum class Condition: uint8_t {
-    kT,
-    kF,
-    kHI,
-    kLS,
-    kCC,
-    kCS,
-    kNE,
-    kEQ,
-    kVC,
-    kVS,
-    kPL,
-    kMI,
-    kGE,
-    kLT,
-    kGT,
-    kLE,
+    kT = 0,
+    kF = 1,
+    kHI = 2,
+    kLS = 3,
+    kCC = 4,
+    kCS = 5,
+    kNE = 6,
+    kEQ = 7,
+    kVC = 8,
+    kVS = 9,
+    kPL = 10,
+    kMI = 11,
+    kGE = 12,
+    kLT = 13,
+    kGT = 14,
+    kLE = 15,
 };
+
 
 enum class SizeSpec: uint8_t {
     kNone,
