@@ -478,10 +478,6 @@ struct DisasmNode {
     /// Indicates whether instruction is a call (BSR, JSR) or just a branch
     /// (Bcc, JMP) if `has_branch_addr` is set
     bool is_call{};
-    /// Mnemonic of the instruction at the current offset
-    char mnemonic[kMnemonicBufferSize]{};
-    /// Formatted arguments of the instruction;
-    char arguments[kArgsBufferSize]{};
     ReferenceNode *ref_by{};
     ReferenceNode *last_ref_by{};
     OpCode opcode{OpCode::kNone}; ///< Should replace `mnemonic` field

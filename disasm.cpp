@@ -1178,11 +1178,11 @@ static size_t disasm_moveq(DisasmNode &node, uint16_t instr, const DataBuffer &c
     }
     const int xn = (instr >> 9) & 7;
     const auto dst = AddrModeArg::Dn(xn);
-    char dst_str[32]{};
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "moveq");
     const int8_t data = instr & 0xff;
-    snprintf(node.arguments, kArgsBufferSize, "#%d,%s", data, dst_str);
+    node.opcode = OpCode::kMOVEQ;
+    node.size_spec = SizeSpec::kLong;
+    node.arg1 = Arg::Immediate(data);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + dst.Size();
 
 }
@@ -1191,7 +1191,7 @@ static size_t disasm_divu_divs_mulu_muls(
         DisasmNode &node,
         uint16_t instr,
         const DataBuffer &code,
-        const char *mnemonic)
+        OpCode opcode)
 {
     const auto opsize = OpSize::kWord;
     const auto src = FetchAddrModeArg(
@@ -1218,24 +1218,15 @@ static size_t disasm_divu_divs_mulu_muls(
     }
     const unsigned dn = (instr >> 9) & 7;
     const auto dst = AddrModeArg::Dn(dn);
-    char dst_str[32]{};
-    char src_str[32]{};
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    src.SNPrint(src_str, sizeof(src_str));
-    const bool is_signed = (instr >> 8) & 1;
-    const char sign_suffix = is_signed ? 's' : 'u';
-    const char suffix = suffix_from_opsize(opsize);
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c%c", mnemonic, sign_suffix, suffix);
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.opcode = opcode;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + dst.Size() + src.Size();
 }
 
 static size_t disasm_addx_subx_abcd_sbcd(
-        DisasmNode &node,
-        const uint16_t instr,
-        const char *mnemonic,
-        const char *msuffix,
-        const bool skip_suffix = false)
+        DisasmNode &node, const uint16_t instr, const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     // Must be already handled by parent call
@@ -1245,31 +1236,23 @@ static size_t disasm_addx_subx_abcd_sbcd(
     const int xi = (instr >> 9) & 7;
     const auto src = m ? AddrModeArg::AnAddrDecr(xn) : AddrModeArg::Dn(xn);
     const auto dst = m ? AddrModeArg::AnAddrDecr(xi) : AddrModeArg::Dn(xi);
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    const char suffix = suffix_from_opsize(opsize);
-    if (skip_suffix) {
-        // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily
-        // consumes SBCD.B and others. That's why `skip_suffix` flag is needed,
-        // specifically for ABCD mnemonic. It is probably a bug in GNU AS.
-        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s", mnemonic, msuffix);
-    } else {
-        snprintf(node.mnemonic, kMnemonicBufferSize, "%s%s%c", mnemonic, msuffix, suffix);
-    }
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.opcode = opcode;
+    // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily consumes
+    // SBCD.B and others. That's why `skip_suffix` flag is needed, specifically
+    // for ABCD mnemonic. It is probably a bug in GNU AS.
+    node.size_spec = (opcode == OpCode::kABCD) ? SizeSpec::kNone : ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
 static size_t disasm_or_and(
         DisasmNode &node,
-        uint16_t instr,
+        const uint16_t instr,
         const DataBuffer &code,
         const OpSize opsize,
-        const char* mnemonic)
+        const OpCode opcode)
 {
-    const char suffix = suffix_from_opsize(opsize);
     const bool dir_to_addr = (instr >> 8) & 1;
     const auto addr = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
@@ -1304,28 +1287,17 @@ static size_t disasm_or_and(
             // immediate cannot be destination
             return disasm_verbatim(node, instr, code);
         }
-        if (1) {
-            // XXX GNU AS always emits ORI (04xx xxxx [xxxx]) or ANDI (02xx
-            // xxxx [xxxx]) instruction when given OR or AND correspondingly
-            // with immediate source argument. It may become an option like
-            // -fpedantic to generate instruction in this case, but for now it
-            // is gonna be just plain bytes to keep original and reassembled
-            // binaries *identical* as it must be by default.
-            return disasm_verbatim(node, instr, code);
-        }
         break;
     }
-    const unsigned dn = (instr >> 9) & 7;
-    const auto reg = AddrModeArg::Dn(dn);
-    char addr_str[32]{};
-    char reg_str[32]{};
-    addr.SNPrint(addr_str, sizeof(addr_str));
-    reg.SNPrint(reg_str, sizeof(reg_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+    const auto reg = AddrModeArg::Dn((instr >> 9) & 7);
+    node.opcode = opcode;
+    node.size_spec = ToSizeSpec(opsize);
     if (dir_to_addr) {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+        node.arg1 = Arg::FromAddrModeArg(reg);
+        node.arg2 = Arg::FromAddrModeArg(addr);
     } else {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+        node.arg1 = Arg::FromAddrModeArg(addr);
+        node.arg2 = Arg::FromAddrModeArg(reg);
     }
     return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
@@ -1333,22 +1305,23 @@ static size_t disasm_or_and(
 static size_t disasm_divu_divs_sbcd_or(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
+    // Also ensures that opsize == OpSize::kByte, i.e. 0b00
     if ((instr & 0x1f0) == 0x100) {
-        return disasm_addx_subx_abcd_sbcd(node, instr, "sbcd", "");
+        return disasm_addx_subx_abcd_sbcd(node, instr, OpCode::kSBCD);
     }
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_divu_divs_mulu_muls(node, instr, code, "div");
+        const bool is_signed = (instr >> 8) & 1;
+        const auto opcode = is_signed ? OpCode::kDIVS : OpCode::kDIVU;
+        return disasm_divu_divs_mulu_muls(node, instr, code, opcode);
     }
-    return disasm_or_and(node, instr, code, opsize, "or");
+    return disasm_or_and(node, instr, code, opsize, OpCode::kOR);
 }
 
 static inline size_t disasm_adda_suba_cmpa(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const char *mnemonic)
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
-    const char suffix = suffix_from_opsize(opsize);
-    assert(suffix != 'b');
     const auto src = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (src.mode) {
@@ -1370,12 +1343,10 @@ static inline size_t disasm_adda_suba_cmpa(
     }
     const unsigned an = (instr >> 9) & 7;
     const auto dst = AddrModeArg::An(an);
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%sa%c", mnemonic, suffix);
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.opcode = opcode;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
@@ -1383,7 +1354,7 @@ static size_t disasm_add_sub_cmp(
         DisasmNode &node,
         const uint16_t instr,
         const DataBuffer &code,
-        const char *mnemonic,
+        const OpCode opcode,
         const OpSize opsize,
         const bool dir_to_addr)
 {
@@ -1421,28 +1392,18 @@ static size_t disasm_add_sub_cmp(
             // immediate cannot be destination
             return disasm_verbatim(node, instr, code);
         }
-        if (1) {
-            // XXX GNU AS always emits ADDI (06xx xxxx [xxxx]) instruction when
-            // given ADD with immediate source argument. It also emits SUBQ when
-            // given SUB with immediate source argument. It may become an
-            // option like -fpedantic to generate instruction in this case, but
-            // for now it is gonna be just plain bytes to keep original and
-            // reassembled binaries *identical* as it must be by default.
-            return disasm_verbatim(node, instr, code);
-        }
         break;
     }
     const unsigned dn = (instr >> 9) & 7;
     const auto reg = AddrModeArg::Dn(dn);
-    char addr_str[32]{};
-    char reg_str[32]{};
-    addr.SNPrint(addr_str, sizeof(addr_str));
-    reg.SNPrint(reg_str, sizeof(reg_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c", mnemonic, suffix);
+    node.opcode = opcode;
+    node.size_spec = ToSizeSpec(opsize);
     if (dir_to_addr) {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+        node.arg1 = Arg::FromAddrModeArg(reg);
+        node.arg2 = Arg::FromAddrModeArg(addr);
     } else {
-        snprintf(node.arguments, kArgsBufferSize, "%s,%s", addr_str, reg_str);
+        node.arg1 = Arg::FromAddrModeArg(addr);
+        node.arg2 = Arg::FromAddrModeArg(reg);
     }
     return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
@@ -1453,20 +1414,17 @@ static size_t disasm_cmpm(
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     // Must be already handled by parent call
     assert(opsize != OpSize::kInvalid);
-    const int m = (instr >> 3) & 3;
+    const int m = (instr >> 3) & 7;
     assert(m == 1);
     (void) m;
     const int xn = instr & 7;
     const int xi = (instr >> 9) & 7;
     const auto src = AddrModeArg::AnAddrIncr(xn);
     const auto dst = AddrModeArg::AnAddrIncr(xi);
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    const char suffix = suffix_from_opsize(opsize);
-    snprintf(node.mnemonic, kMnemonicBufferSize, "cmpm%c", suffix);
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.opcode = OpCode::kCMPM;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
@@ -1474,7 +1432,6 @@ static size_t disasm_eor(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
-    const char suffix = suffix_from_opsize(opsize);
     const auto addr = FetchAddrModeArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (addr.mode) {
@@ -1498,14 +1455,11 @@ static size_t disasm_eor(
         // PC relative and immediate cannot be destination
         return disasm_verbatim(node, instr, code);
     }
-    const unsigned dn = (instr >> 9) & 7;
-    const auto reg = AddrModeArg::Dn(dn);
-    char addr_str[32]{};
-    char reg_str[32]{};
-    addr.SNPrint(addr_str, sizeof(addr_str));
-    reg.SNPrint(reg_str, sizeof(reg_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "eor%c", suffix);
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", reg_str, addr_str);
+    const auto reg = AddrModeArg::Dn((instr >> 9) & 7);
+    node.opcode = OpCode::kEOR;
+    node.size_spec = ToSizeSpec(opsize);
+    node.arg1 = Arg::FromAddrModeArg(reg);
+    node.arg2 = Arg::FromAddrModeArg(addr);
     return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
 }
 
@@ -1514,11 +1468,11 @@ static size_t disasm_eor_cmpm_cmp_cmpa(
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_adda_suba_cmpa(node, instr, code, "cmp");
+        return disasm_adda_suba_cmpa(node, instr, code, OpCode::kCMPA);
     }
     const bool dir_to_addr = ((instr >> 8) & 1);
     if (!dir_to_addr) {
-        return disasm_add_sub_cmp(node, instr, code, "cmp", opsize, dir_to_addr);
+        return disasm_add_sub_cmp(node, instr, code, OpCode::kCMP, opsize, dir_to_addr);
     }
     const int m = (instr >> 3) & 7;
     if (m == 1) {
@@ -1540,12 +1494,10 @@ static inline size_t disasm_exg(DisasmNode &node, uint16_t instr)
     const int xi = (instr >> 9) & 7;
     const auto src = (m == 3) ? AddrModeArg::An(xi) : AddrModeArg::Dn(xi);
     const auto dst = (m == 2) ? AddrModeArg::Dn(xn) : AddrModeArg::An(xn);
-    char src_str[32]{};
-    char dst_str[32]{};
-    src.SNPrint(src_str, sizeof(src_str));
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    snprintf(node.mnemonic, kMnemonicBufferSize, "exg");
-    snprintf(node.arguments, kArgsBufferSize, "%s,%s", src_str, dst_str);
+    node.opcode = OpCode::kEXG;
+    node.size_spec = SizeSpec::kNone;
+    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg2 = Arg::FromAddrModeArg(dst);
     return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
 }
 
@@ -1553,48 +1505,50 @@ static size_t disasm_chunk_c(
         DisasmNode &node, uint16_t instr, const DataBuffer &code)
 {
     if ((instr & 0x1f0) == 0x100) {
-        // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily
-        // consumes SBCD.B and others. That's why `skip_suffix` flag is needed,
-        // specifically for ABCD mnemonic. It is probably a bug in GNU AS.
-        const bool skip_size_suffix = true;
-        return disasm_addx_subx_abcd_sbcd(node, instr, "abcd", "", skip_size_suffix);
+        return disasm_addx_subx_abcd_sbcd(node, instr, OpCode::kABCD);
     }
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_divu_divs_mulu_muls(node, instr, code, "mul");
+        const bool is_signed = (instr >> 8) & 1;
+        const auto opcode = is_signed ? OpCode::kMULS : OpCode::kMULU;
+        return disasm_divu_divs_mulu_muls(node, instr, code, opcode);
     }
     const unsigned m_split = instr & 0x1f8;
     if (m_split == 0x188 || m_split == 0x148 || m_split == 0x140) {
         return disasm_exg(node, instr);
     }
-    return disasm_or_and(node, instr, code, opsize, "and");
+    return disasm_or_and(node, instr, code, opsize, OpCode::kAND);
 }
 
 static size_t disasm_add_sub_x_a(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const char *mnemonic)
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_adda_suba_cmpa(node, instr, code, mnemonic);
+        return disasm_adda_suba_cmpa(node, instr, code, (opcode == OpCode::kSUB) ? OpCode::kSUBA : OpCode::kADDA);
     }
     const bool dir_to_addr = (instr >> 8) & 1;
     const unsigned m = (instr >> 3) & 7;
     if (dir_to_addr && (m == 0 || m == 1)) {
-        return disasm_addx_subx_abcd_sbcd(node, instr, mnemonic, "x");
+        return disasm_addx_subx_abcd_sbcd(node, instr, (opcode == OpCode::kSUB) ? OpCode::kSUBX : OpCode::kADDX);
     }
-    return disasm_add_sub_cmp(node, instr, code, mnemonic, opsize, dir_to_addr);
+    return disasm_add_sub_cmp(node, instr, code, opcode, opsize, dir_to_addr);
 }
 
-static inline const char *ShiftKindToMnemonic(const ShiftKind k)
+static OpCode ShiftKindToOpcode(const ShiftKind k, const ShiftDirection d)
 {
     switch (k) {
-    case ShiftKind::kArithmeticShift: return "as";
-    case ShiftKind::kLogicalShift: return "ls";
-    case ShiftKind::kRotateX: return "rox";
-    case ShiftKind::kRotate: return "ro";
+    case ShiftKind::kArithmeticShift:
+        return d == ShiftDirection::kLeft ? OpCode::kASL : OpCode::kASR;
+    case ShiftKind::kLogicalShift:
+        return d == ShiftDirection::kLeft ? OpCode::kLSL : OpCode::kLSR;
+    case ShiftKind::kRotateX:
+        return d == ShiftDirection::kLeft ? OpCode::kROXL : OpCode::kROXR;
+    case ShiftKind::kRotate:
+        return d == ShiftDirection::kLeft ? OpCode::kROL : OpCode::kROR;
     }
     assert(false);
-    return "?";
+    return OpCode::kNone;
 }
 
 static inline bool IsValidShiftKind(const ShiftKind k)
@@ -1614,7 +1568,6 @@ static size_t disasm_shift_rotate(
     if (!IsValidShiftKind(kind)) {
         return disasm_verbatim(node, instr, code);
     }
-    const unsigned m = (instr >> 5) & 1;
     const auto dst = (opsize == OpSize::kInvalid)
         ? FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize)
         : AddrModeArg::Dn(xn);
@@ -1643,21 +1596,17 @@ static size_t disasm_shift_rotate(
             return disasm_verbatim(node, instr, code);
         }
     }
-    const char suffix = suffix_from_opsize(opsize);
     const unsigned imm = ((rotation - 1) & 7) + 1;
     const unsigned src = (opsize == OpSize::kInvalid) ? 1 : rotation;
     const auto dir = static_cast<ShiftDirection>((instr >> 8) & 1);
-    char dst_str[32]{};
-    dst.SNPrint(dst_str, sizeof(dst_str));
-    const char *mnemonic = ShiftKindToMnemonic(kind);
-    const char dirchar = (dir == ShiftDirection::kRight) ? 'r' : 'l';
-    snprintf(node.mnemonic, kMnemonicBufferSize, "%s%c%c", mnemonic, dirchar, suffix);
+    node.opcode = ShiftKindToOpcode(kind, dir);
+    node.size_spec = ToSizeSpec(opsize);
     if (opsize == OpSize::kInvalid) {
-        snprintf(node.arguments, kArgsBufferSize, "%s", dst_str);
-    } else if (m == 1) {
-        snprintf(node.arguments, kArgsBufferSize, "%%d%u,%s", src, dst_str);
+        node.arg1 = Arg::FromAddrModeArg(dst);
     } else {
-        snprintf(node.arguments, kArgsBufferSize, "#%u,%s", imm, dst_str);
+        const unsigned m = (instr >> 5) & 1;
+        node.arg1 = m ? Arg::AddrModeXn(ArgType::kDn, src) : Arg::Immediate(imm);
+        node.arg2 = Arg::FromAddrModeArg(dst);
     }
     return node.size = kInstructionSizeStepBytes + dst.Size();
 }
@@ -1682,7 +1631,7 @@ static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c)
     case 0x8:
         return disasm_divu_divs_sbcd_or(n, i, c);
     case 0x9:
-        return disasm_add_sub_x_a(n, i, c, "sub");
+        return disasm_add_sub_x_a(n, i, c, OpCode::kSUB);
     case 0xa:
         // Does not exist
         return disasm_verbatim(n, i, c);
@@ -1691,7 +1640,7 @@ static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c)
     case 0xc:
         return disasm_chunk_c(n, i, c);
     case 0xd:
-        return disasm_add_sub_x_a(n, i, c, "add");
+        return disasm_add_sub_x_a(n, i, c, OpCode::kADD);
     case 0xe:
         return disasm_shift_rotate(n, i, c);
     case 0xf:
@@ -1707,8 +1656,8 @@ size_t DisasmNode::Disasm(const DataBuffer &code)
     // We assume that machine have no MMU and ROM data always starts with 0
     assert(this->offset < code.occupied_size);
     // It is possible to have multiple DisasmNode::Disasm() calls, and there is
-    // no point to disassemble it again if it already has mnemonic determined
-    if (this->mnemonic[0] != '\0') {
+    // no point to disassemble it again if it already has opcode determined
+    if (this->opcode != OpCode::kNone) {
         return this->size;
     }
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
