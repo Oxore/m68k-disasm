@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: Unlicense
+ */
+
 #include "disasm.h"
 #include "data_buffer.h"
 #include "common.h"

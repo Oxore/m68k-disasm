@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: Unlicense
+ */
+
 #pragma once
 
 #include "data_buffer.h"
