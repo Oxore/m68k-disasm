@@ -172,7 +172,7 @@ static void RenderDisassembly(
                     fprintf(output, ".L%08x:\n", node->offset);
                 }
             }
-            assert(node->opcode != OpCode::kNone);
+            assert(node->op.opcode != OpCode::kNone);
             if (ShouldPrintAsRaw(node->op)) {
                 auto raw = Op::Raw(GetU16BE(code.buffer + node->offset));
                 raw.FPrint(output, s);
