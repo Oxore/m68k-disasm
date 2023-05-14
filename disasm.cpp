@@ -354,25 +354,24 @@ static size_t disasm_chk(
 static size_t disasm_bra_bsr_bcc(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
-    int16_t dispmt = static_cast<int8_t>(instr & 0xff);
-    if (dispmt % static_cast<int16_t>(kInstructionSizeStepBytes)) {
+    const int16_t dispmt0 = static_cast<int8_t>(instr & 0xff);
+    if (dispmt0 == -1) {
+        // This will definitely lead to executing invalid instruction and is
+        // also invalid for GNU AS to assemble
         return disasm_verbatim(node, instr);
     }
-    const auto opsize = dispmt ? OpSize::kShort : OpSize::kWord;
-    if (dispmt == 0) {
+    const auto opsize = dispmt0 ? OpSize::kShort : OpSize::kWord;
+    if (dispmt0 == 0) {
         // Check the boundaries
         if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
-            return disasm_verbatim(node, instr);
-        }
-        dispmt = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-        if (dispmt % kInstructionSizeStepBytes) {
             return disasm_verbatim(node, instr);
         }
         node.size = kInstructionSizeStepBytes * 2;
     } else {
         node.size = kInstructionSizeStepBytes;
     }
-    dispmt += kInstructionSizeStepBytes;
+    const int16_t dispmt = kInstructionSizeStepBytes + (dispmt0
+        ? dispmt0 : GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes));
     const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     // False condition Indicates BSR
@@ -999,9 +998,6 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuff
         return disasm_verbatim(node, instr);
     }
     const int16_t dispmt_raw = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
-    if (dispmt_raw % static_cast<int16_t>(kInstructionSizeStepBytes)) {
-        return disasm_verbatim(node, instr);
-    }
     const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
     node.branch_addr = static_cast<uint32_t>(node.offset + dispmt);
     node.has_branch_addr = true;
@@ -1703,7 +1699,7 @@ static size_t snprint_reg_mask(
     size_t written = 0;
     bool first_printed = 0;
     size_t span = 0;
-    // 17-th bit used to close the span with 0 value unconditionaly
+    // 17-th bit used to close the span with 0 value unconditionally
     for (int i = 0; i < 17; i++) {
         const uint32_t mask = 1 << (arg_type == ArgType::kRegMaskPredecrement ? (15 - i) : i);
         const bool hit = regmask & mask;
