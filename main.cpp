@@ -134,12 +134,12 @@ static const char *ReferenceTypeToString(ReferenceType type)
     return "UNKN";
 }
 
-static bool ShouldPrintAsRaw(const DisasmNode& node)
+static constexpr bool ShouldPrintAsRaw(const Op& op)
 {
-    if (node.arg1.type == ArgType::kImmediate) {
-        if (node.opcode == OpCode::kADD || node.opcode == OpCode::kSUB ||
-                node.opcode == OpCode::kAND || node.opcode == OpCode::kOR ||
-                node.opcode == OpCode::kEOR || node.opcode == OpCode::kCMP)
+    if (op.arg1.type == ArgType::kImmediate) {
+        if (op.opcode == OpCode::kADD || op.opcode == OpCode::kSUB ||
+                op.opcode == OpCode::kAND || op.opcode == OpCode::kOR ||
+                op.opcode == OpCode::kEOR || op.opcode == OpCode::kCMP)
         {
             return true;
         }
@@ -173,22 +173,19 @@ static void RenderDisassembly(
                 }
             }
             assert(node->opcode != OpCode::kNone);
-            if (ShouldPrintAsRaw(*node)) {
-                auto raw = DisasmNode{TracedNodeType::kInstruction, node->offset};
-                    raw.opcode = OpCode::kRaw;
-                raw.opcode = OpCode::kRaw;
-                raw.arg1 = Arg::Raw(GetU16BE(code.buffer + raw.offset));
+            if (ShouldPrintAsRaw(node->op)) {
+                auto raw = Op::Raw(GetU16BE(code.buffer + node->offset));
                 raw.FPrint(output, s);
                 uint32_t i = kInstructionSizeStepBytes;
                 for (; i < node->size; i += kInstructionSizeStepBytes) {
                     char arg_str[kArgsBufferSize]{};
-                    const auto arg = Arg::Raw(GetU16BE(code.buffer + raw.offset + i));
+                    const auto arg = Arg::Raw(GetU16BE(code.buffer + node->offset + i));
                     arg.SNPrint(arg_str, kArgsBufferSize, s);
                     fprintf(output, ", %s", arg_str);
                 }
                 fprintf(output, "\n");
             } else {
-                node->FPrint(output, s);
+                node->op.FPrint(output, s);
             }
             if (node->has_branch_addr && s.xrefs_to) {
                 char branch_addr[12]{};

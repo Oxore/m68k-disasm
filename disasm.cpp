@@ -140,7 +140,7 @@ constexpr Arg FetchArg(
     return Arg{};
 }
 
-static inline Arg FetchArg(
+static Arg FetchArg(
         const uint32_t offset, const DataBuffer &code, const uint16_t instr, const OpSize s)
 {
     const int addrmode = instr & 0x3f;
@@ -151,9 +151,7 @@ static inline Arg FetchArg(
 
 static size_t disasm_verbatim(DisasmNode &node, const uint16_t instr)
 {
-    node.opcode = OpCode::kRaw;
-    node.size_spec = OpSize::kNone;
-    node.arg1 = Arg::Raw(instr);
+    node.op = Op::Raw(instr);
     return node.size;
 }
 
@@ -214,21 +212,14 @@ static size_t disasm_jsr_jmp(
         return disasm_verbatim(node, instr);
     }
     node.is_call = (jtype == JKind::kJsr);
-    node.opcode = (jtype == JKind::kJsr) ? OpCode::kJSR : OpCode::kJMP;
-    node.size_spec = OpSize::kNone;
-    node.arg1 = a;
+    node.op = Op::Typical((jtype == JKind::kJsr) ? OpCode::kJSR : OpCode::kJMP, OpSize::kNone, a);
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
-static inline size_t disasm_ext(
-        DisasmNode &node,
-        const OpSize opsize,
-        const Arg arg)
+static size_t disasm_ext(DisasmNode &node, const OpSize opsize, const Arg arg)
 {
     assert(arg.mode == AddrMode::kDn);
-    node.opcode = OpCode::kEXT;
-    node.size_spec = opsize;
-    node.arg1 = arg;
+    node.op = Op::Typical(OpCode::kEXT, opsize, arg);
     return node.size = kInstructionSizeStepBytes + arg.Size(opsize);
 }
 
@@ -284,14 +275,14 @@ static size_t disasm_ext_movem(
     case AddrMode::kImmediate: // 4ebc / 4efc
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCode::kMOVEM;
-    node.size_spec = opsize;
     if (dir == MoveDirection::kMemoryToRegister) {
-        node.arg1 = a;
-        node.arg2 = (a.mode == AddrMode::kAnAddrDecr) ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
+        const auto arg2 = (a.mode == AddrMode::kAnAddrDecr)
+            ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
+        node.op = Op::Typical(OpCode::kMOVEM, opsize, a, arg2);
     } else {
-        node.arg1 = (a.mode == AddrMode::kAnAddrDecr) ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
-        node.arg2 = a;
+        const auto arg1 = (a.mode == AddrMode::kAnAddrDecr)
+            ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
+        node.op = Op::Typical(OpCode::kMOVEM, opsize, arg1, a);
     }
     return node.size = kInstructionSizeStepBytes * 2 + a.Size(opsize);
 }
@@ -324,10 +315,7 @@ static size_t disasm_lea(
     }
     const unsigned an = ((instr >> 9) & 7);
     const auto reg = Arg::An(an);
-    node.opcode = OpCode::kLEA;
-    node.size_spec = OpSize::kLong;
-    node.arg1 = addr;
-    node.arg2 = reg;
+    node.op = Op::Typical(OpCode::kLEA, opsize, addr, reg);
     return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
 
@@ -359,10 +347,7 @@ static size_t disasm_chk(
     }
     const unsigned dn = ((instr >> 9) & 7);
     const auto dst = Arg::Dn(dn);
-    node.opcode = OpCode::kCHK;
-    node.size_spec = OpSize::kWord;
-    node.arg1 = src;
-    node.arg2 = dst;
+    node.op = Op::Typical(OpCode::kCHK, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -373,7 +358,7 @@ static size_t disasm_bra_bsr_bcc(
     if (dispmt % static_cast<int16_t>(kInstructionSizeStepBytes)) {
         return disasm_verbatim(node, instr);
     }
-    node.size_spec = dispmt ? OpSize::kShort : OpSize::kWord;
+    const auto opsize = dispmt ? OpSize::kShort : OpSize::kWord;
     if (dispmt == 0) {
         // Check the boundaries
         if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
@@ -392,11 +377,9 @@ static size_t disasm_bra_bsr_bcc(
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     // False condition Indicates BSR
     node.is_call = (condition == Condition::kF);
-    node.opcode = OpCode::kBcc;
-    node.condition = condition;
-    node.arg1 = Arg::Displacement(dispmt);
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
+    node.op = Op{OpCode::kBcc, opsize, condition, Arg::Displacement(dispmt)};
     // FIXME support s.rel_marks option for this instruction
     return node.size;
 }
@@ -413,7 +396,7 @@ static OpCode OpCodeForBitOps(const unsigned opcode)
     return OpCode::kNone;
 }
 
-static inline size_t disasm_movep(
+static size_t disasm_movep(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const unsigned dn = ((instr >> 9) & 7);
@@ -428,14 +411,10 @@ static inline size_t disasm_movep(
     }
     assert(addr.mode == AddrMode::kD16AnAddr);
     const auto reg = Arg::Dn(dn);
-    node.opcode = OpCode::kMOVEP;
-    node.size_spec = opsize;
     if (dir == MoveDirection::kRegisterToMemory) {
-        node.arg1 = reg;
-        node.arg2 = addr;
+        node.op = Op::Typical(OpCode::kMOVEP, opsize, reg, addr);
     } else {
-        node.arg1 = addr;
-        node.arg2 = reg;
+        node.op = Op::Typical(OpCode::kMOVEP, opsize, addr, reg);
     }
     return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
@@ -452,6 +431,7 @@ static size_t disasm_src_arg_bitops_movep(
     }
     const unsigned dn = ((instr >> 9) & 7);
     const unsigned xn = instr & 7;
+    const OpSize opsize0 = OpSize::kByte;
     // Fetch AddrMode::kDn if has_dn_src, otherwise fetch AddrMode::kImmediate
     // byte
     const auto src = FetchArg(
@@ -459,7 +439,7 @@ static size_t disasm_src_arg_bitops_movep(
             code,
             (has_dn_src) ? 0 : 7,
             dn,
-            OpSize::kByte);
+            opsize0);
     if (src.mode == AddrMode::kInvalid) {
         return disasm_verbatim(node, instr);
     }
@@ -469,9 +449,8 @@ static size_t disasm_src_arg_bitops_movep(
         assert(dn == 4);
         assert(src.mode == AddrMode::kImmediate);
     }
-    const OpSize opsize = OpSize::kWord;
     const auto dst = FetchArg(
-            node.offset + kInstructionSizeStepBytes + src.Size(opsize), code, m, xn, opsize);
+            node.offset + kInstructionSizeStepBytes + src.Size(opsize0), code, m, xn, opsize0);
     const unsigned opcode = (instr >> 6) & 3;
     switch (dst.mode) {
     case AddrMode::kInvalid:
@@ -498,11 +477,9 @@ static size_t disasm_src_arg_bitops_movep(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCodeForBitOps(opcode);
-    node.size_spec = dst.mode == AddrMode::kDn ? OpSize::kLong : OpSize::kByte;
-    node.arg1 = src;
-    node.arg2 = dst;
-    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
+    const auto opsize = dst.mode == AddrMode::kDn ? OpSize::kLong : OpSize::kByte;
+    node.op = Op::Typical(OpCodeForBitOps(opcode), opsize, src, dst);
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize0) + dst.Size(opsize0);
 }
 
 static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c)
@@ -513,10 +490,7 @@ static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c
 static size_t disasm_logical_immediate_to(
         DisasmNode &node, OpCode opcode, OpSize opsize, Arg imm)
 {
-    node.opcode = opcode;
-    node.size_spec = opsize;
-    node.arg1 = imm;
-    node.arg2 = (opsize == OpSize::kByte) ? Arg::CCR() : Arg::SR();
+    node.op = Op::Typical(opcode, opsize, imm, (opsize == OpSize::kByte) ? Arg::CCR() : Arg::SR());
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
@@ -606,10 +580,7 @@ static size_t disasm_bitops_movep(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = mnemonic;
-    node.size_spec = opsize;
-    node.arg1 = src;
-    node.arg2 = dst;
+    node.op = Op::Typical(mnemonic, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -655,10 +626,8 @@ static size_t disasm_move_movea(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = (dst.mode == AddrMode::kAn) ? OpCode::kMOVEA : OpCode::kMOVE;
-    node.size_spec = opsize;
-    node.arg1 = src;
-    node.arg2 = dst;
+    const auto opcode = (dst.mode == AddrMode::kAn) ? OpCode::kMOVEA : OpCode::kMOVE;
+    node.op = Op::Typical(opcode, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -688,10 +657,7 @@ static size_t disasm_move_from_sr(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCode::kMOVE;
-    node.size_spec = opsize;
-    node.arg1 = Arg::SR();
-    node.arg2 = dst;
+    node.op = Op::Typical(OpCode::kMOVE, opsize, Arg::SR(), dst);
     return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
 }
 
@@ -720,10 +686,7 @@ static size_t disasm_move_to(
     case AddrMode::kImmediate:
         break;
     }
-    node.opcode = OpCode::kMOVE;
-    node.size_spec = opsize;
-    node.arg1 = src;
-    node.arg2 = Arg{reg, 0};
+    node.op = Op::Typical(OpCode::kMOVE, opsize, src, Arg{reg, 0});
     return node.size = kInstructionSizeStepBytes + src.Size(opsize);
 }
 
@@ -780,21 +743,18 @@ static size_t disasm_move_negx_clr_neg_not(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = opcode_for_negx_clr_neg_not(opcode);
-    node.size_spec = opsize;
-    node.arg1 = a;
+    node.op = Op::Typical(opcode_for_negx_clr_neg_not(opcode), opsize, a);
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
-static inline size_t disasm_trivial(
+static size_t disasm_trivial(
         DisasmNode &node, const OpCode opcode)
 {
-    node.opcode = opcode;
-    node.size_spec = OpSize::kNone;
-    return node.size = kInstructionSizeStepBytes;
+    node.op = Op::Typical(opcode, OpSize::kNone);
+    return node.size;
 }
 
-static inline size_t disasm_tas(
+static size_t disasm_tas(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const auto opsize = OpSize::kByte;
@@ -820,9 +780,7 @@ static inline size_t disasm_tas(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCode::kTAS;
-    node.size_spec = opsize;
-    node.arg1 = a;
+    node.op = Op::Typical(OpCode::kTAS, opsize, a);
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
@@ -859,18 +817,14 @@ static size_t disasm_tst_tas_illegal(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCode::kTST;
-    node.size_spec = opsize;
-    node.arg1 = a;
+    node.op = Op::Typical(OpCode::kTST, opsize, a);
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
 static size_t disasm_trap(DisasmNode &node, const uint16_t instr)
 {
     const unsigned vector = instr & 0xf;
-    node.opcode = OpCode::kTRAP;
-    node.size_spec = OpSize::kNone;
-    node.arg1 = Arg::Immediate(vector);
+    node.op = Op::Typical(OpCode::kTRAP, OpSize::kNone, Arg::Immediate(vector));
     return node.size = kInstructionSizeStepBytes;
 }
 
@@ -879,9 +833,7 @@ static size_t disasm_link_unlink(DisasmNode &node, const uint16_t instr, const D
     const bool unlk = (instr >> 3) & 1;
     const unsigned xn = instr & 7;
     if (unlk) {
-        node.opcode = OpCode::kUNLK;
-        node.size_spec = OpSize::kNone;
-        node.arg1 = Arg::AddrModeXn(ArgType::kAn, xn);
+        node.op = Op::Typical(OpCode::kUNLK, OpSize::kNone, Arg::AddrModeXn(ArgType::kAn, xn));
         return node.size = kInstructionSizeStepBytes;
     }
     const auto opsize = OpSize::kWord;
@@ -889,10 +841,7 @@ static size_t disasm_link_unlink(DisasmNode &node, const uint16_t instr, const D
     if (src.mode != AddrMode::kImmediate) {
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCode::kLINK;
-    node.size_spec = opsize;
-    node.arg1 = Arg::AddrModeXn(ArgType::kAn, xn);
-    node.arg2 = src;
+    node.op = Op::Typical(OpCode::kLINK, opsize, Arg::AddrModeXn(ArgType::kAn, xn), src);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize);
 }
 
@@ -900,14 +849,12 @@ static size_t disasm_move_usp(DisasmNode &node, const uint16_t instr)
 {
     const unsigned xn = instr & 7;
     const auto dir = static_cast<MoveDirection>((instr >> 3) & 1);
-    node.opcode = OpCode::kMOVE;
-    node.size_spec = OpSize::kLong;
     if (dir == MoveDirection::kRegisterToMemory) {
-        node.arg1 = Arg::AddrModeXn(ArgType::kAn, xn);
-        node.arg2 = Arg::USP();
+        node.op = Op::Typical(
+                OpCode::kMOVE, OpSize::kLong, Arg::AddrModeXn(ArgType::kAn, xn), Arg::USP());
     } else {
-        node.arg1 = Arg::USP();
-        node.arg2 = Arg::AddrModeXn(ArgType::kAn, xn);
+        node.op = Op::Typical(
+                OpCode::kMOVE, OpSize::kLong, Arg::USP(), Arg::AddrModeXn(ArgType::kAn, xn));
     }
     return node.size = kInstructionSizeStepBytes;
 }
@@ -915,9 +862,9 @@ static size_t disasm_move_usp(DisasmNode &node, const uint16_t instr)
 static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const bool is_nbcd = !((instr >> 6) & 1);
-    const OpSize opsize = OpSize::kWord;
+    const OpSize opsize0 = OpSize::kWord;
     const auto arg = FetchArg(
-            node.offset + kInstructionSizeStepBytes, code, instr, opsize);
+            node.offset + kInstructionSizeStepBytes, code, instr, opsize0);
     bool is_swap{};
     switch (arg.mode) {
     case AddrMode::kInvalid:
@@ -951,10 +898,10 @@ static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
-    node.opcode = is_nbcd ? OpCode::kNBCD : is_swap ? OpCode::kSWAP : OpCode::kPEA;
-    node.size_spec = is_nbcd ? OpSize::kByte : is_swap ? OpSize::kWord : OpSize::kLong;
-    node.arg1 = arg;
-    return node.size = kInstructionSizeStepBytes + arg.Size(opsize);
+    const auto opcode = is_nbcd ? OpCode::kNBCD : is_swap ? OpCode::kSWAP : OpCode::kPEA;
+    const auto opsize = is_nbcd ? OpSize::kByte : is_swap ? OpSize::kWord : OpSize::kLong;
+    node.op = Op::Typical(opcode, opsize, arg);
+    return node.size = kInstructionSizeStepBytes + arg.Size(opsize0);
 }
 
 static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
@@ -963,9 +910,7 @@ static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataBuff
     if (a.mode != AddrMode::kImmediate) {
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCode::kSTOP;
-    node.size_spec = OpSize::kNone;
-    node.arg1 = a;
+    node.op = Op::Typical(OpCode::kSTOP, OpSize::kNone, a);
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
@@ -1043,10 +988,8 @@ static size_t disasm_addq_subq(
         return disasm_verbatim(node, instr);
     }
     const unsigned imm = ((uint8_t((instr >> 9) & 7) - 1) & 7) + 1;
-    node.opcode = ((instr >> 8) & 1) ? OpCode::kSUBQ : OpCode::kADDQ;
-    node.size_spec = opsize;
-    node.arg1 = Arg::Immediate(imm);
-    node.arg2 = a;
+    const auto opcode = ((instr >> 8) & 1) ? OpCode::kSUBQ : OpCode::kADDQ;
+    node.op = Op::Typical(opcode, opsize, Arg::Immediate(imm), a);
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
@@ -1062,11 +1005,13 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuff
     const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
     node.branch_addr = static_cast<uint32_t>(node.offset + dispmt);
     node.has_branch_addr = true;
-    node.opcode = OpCode::kDBcc;
-    node.condition = static_cast<Condition>((instr >> 8) & 0xf);
-    node.size_spec = OpSize::kNone;
-    node.arg1 = Arg::AddrModeXn(ArgType::kDn, (instr & 7));
-    node.arg2 = Arg::Displacement(dispmt);
+    node.op = Op{
+        OpCode::kDBcc,
+        OpSize::kNone,
+        static_cast<Condition>((instr >> 8) & 0xf),
+        Arg::AddrModeXn(ArgType::kDn, (instr & 7)),
+        Arg::Displacement(dispmt),
+    };
     // FIXME support s.rel_marks option for this instruction
     return node.size = kInstructionSizeStepBytes * 2;
 }
@@ -1097,10 +1042,7 @@ static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const Data
         // Does not exist
         return disasm_verbatim(node, instr);
     }
-    node.opcode = OpCode::kScc;
-    node.condition = static_cast<Condition>((instr >> 8) & 0xf);
-    node.size_spec = OpSize::kNone;
-    node.arg1 = a;
+    node.op = Op{OpCode::kScc, OpSize::kNone, static_cast<Condition>((instr >> 8) & 0xf), a};
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
@@ -1123,12 +1065,8 @@ static size_t disasm_moveq(DisasmNode &node, const uint16_t instr)
     const auto dst = Arg::Dn(xn);
     const int8_t data = instr & 0xff;
     const OpSize opsize = OpSize::kLong;
-    node.opcode = OpCode::kMOVEQ;
-    node.size_spec = opsize;
-    node.arg1 = Arg::Immediate(data);
-    node.arg2 = dst;
+    node.op = Op::Typical(OpCode::kMOVEQ, opsize, Arg::Immediate(data), dst);
     return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
-
 }
 
 static size_t disasm_divu_divs_mulu_muls(
@@ -1162,10 +1100,7 @@ static size_t disasm_divu_divs_mulu_muls(
     }
     const unsigned dn = (instr >> 9) & 7;
     const auto dst = Arg::Dn(dn);
-    node.opcode = opcode;
-    node.size_spec = opsize;
-    node.arg1 = src;
-    node.arg2 = dst;
+    node.op = Op::Typical(opcode, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + dst.Size(opsize) + src.Size(opsize);
 }
 
@@ -1180,13 +1115,10 @@ static size_t disasm_addx_subx_abcd_sbcd(
     const int xi = (instr >> 9) & 7;
     const auto src = m ? Arg::AnAddrDecr(xn) : Arg::Dn(xn);
     const auto dst = m ? Arg::AnAddrDecr(xi) : Arg::Dn(xi);
-    node.opcode = opcode;
     // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily consumes
     // SBCD.B and others. That's why `skip_suffix` flag is needed, specifically
     // for ABCD mnemonic. It is probably a bug in GNU AS.
-    node.size_spec = (opcode == OpCode::kABCD) ? OpSize::kNone : opsize;
-    node.arg1 = src;
-    node.arg2 = dst;
+    node.op = Op::Typical(opcode, (opcode == OpCode::kABCD) ? OpSize::kNone : opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -1234,14 +1166,10 @@ static size_t disasm_or_and(
         break;
     }
     const auto reg = Arg::Dn((instr >> 9) & 7);
-    node.opcode = opcode;
-    node.size_spec = opsize;
     if (dir_to_addr) {
-        node.arg1 = reg;
-        node.arg2 = addr;
+        node.op = Op::Typical(opcode, opsize, reg, addr);
     } else {
-        node.arg1 = addr;
-        node.arg2 = reg;
+        node.op = Op::Typical(opcode, opsize, addr, reg);
     }
     return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
@@ -1262,7 +1190,7 @@ static size_t disasm_divu_divs_sbcd_or(
     return disasm_or_and(node, instr, code, opsize, OpCode::kOR);
 }
 
-static inline size_t disasm_adda_suba_cmpa(
+static size_t disasm_adda_suba_cmpa(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
@@ -1287,10 +1215,7 @@ static inline size_t disasm_adda_suba_cmpa(
     }
     const unsigned an = (instr >> 9) & 7;
     const auto dst = Arg::An(an);
-    node.opcode = opcode;
-    node.size_spec = opsize;
-    node.arg1 = src;
-    node.arg2 = dst;
+    node.op = Op::Typical(opcode, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -1339,14 +1264,10 @@ static size_t disasm_add_sub_cmp(
     }
     const unsigned dn = (instr >> 9) & 7;
     const auto reg = Arg::Dn(dn);
-    node.opcode = opcode;
-    node.size_spec = opsize;
     if (dir_to_addr) {
-        node.arg1 = reg;
-        node.arg2 = addr;
+        node.op = Op::Typical(opcode, opsize, reg, addr);
     } else {
-        node.arg1 = addr;
-        node.arg2 = reg;
+        node.op = Op::Typical(opcode, opsize, addr, reg);
     }
     return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
@@ -1363,10 +1284,7 @@ static size_t disasm_cmpm(DisasmNode &node, const uint16_t instr)
     const int xi = (instr >> 9) & 7;
     const auto src = Arg::AnAddrIncr(xn);
     const auto dst = Arg::AnAddrIncr(xi);
-    node.opcode = OpCode::kCMPM;
-    node.size_spec = opsize;
-    node.arg1 = src;
-    node.arg2 = dst;
+    node.op = Op::Typical(OpCode::kCMPM, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -1397,10 +1315,7 @@ static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataBuffe
         return disasm_verbatim(node, instr);
     }
     const auto reg = Arg::Dn((instr >> 9) & 7);
-    node.opcode = OpCode::kEOR;
-    node.size_spec = opsize;
-    node.arg1 = reg;
-    node.arg2 = addr;
+    node.op = Op::Typical(OpCode::kEOR, opsize, reg, addr);
     return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
 
@@ -1422,7 +1337,7 @@ static size_t disasm_eor_cmpm_cmp_cmpa(
     return disasm_eor(node, instr, code);
 }
 
-static inline size_t disasm_exg(DisasmNode &node, const uint16_t instr)
+static size_t disasm_exg(DisasmNode &node, const uint16_t instr)
 {
     assert((instr & 0x130) == 0x100);
     const int m1 = (instr >> 3) & 1;
@@ -1436,10 +1351,7 @@ static inline size_t disasm_exg(DisasmNode &node, const uint16_t instr)
     const auto src = (m == 3) ? Arg::An(xi) : Arg::Dn(xi);
     const auto dst = (m == 2) ? Arg::Dn(xn) : Arg::An(xn);
     const auto opsize = OpSize::kNone;
-    node.opcode = OpCode::kEXG;
-    node.size_spec = opsize;
-    node.arg1 = src;
-    node.arg2 = dst;
+    node.op = Op::Typical(OpCode::kEXG, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -1492,7 +1404,7 @@ static OpCode ShiftKindToOpcode(const ShiftKind k, const ShiftDirection d)
     return OpCode::kNone;
 }
 
-static inline bool IsValidShiftKind(const ShiftKind k)
+static bool IsValidShiftKind(const ShiftKind k)
 {
     return static_cast<int>(k) < 4;
 }
@@ -1539,14 +1451,12 @@ static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const 
     const unsigned imm = ((rotation - 1) & 7) + 1;
     const unsigned src = (opsize == OpSize::kInvalid) ? 1 : rotation;
     const auto dir = static_cast<ShiftDirection>((instr >> 8) & 1);
-    node.opcode = ShiftKindToOpcode(kind, dir);
-    node.size_spec = opsize;
     if (opsize == OpSize::kInvalid) {
-        node.arg1 = dst;
+        node.op = Op::Typical(ShiftKindToOpcode(kind, dir), opsize, dst);
     } else {
         const unsigned m = (instr >> 5) & 1;
-        node.arg1 = m ? Arg::AddrModeXn(ArgType::kDn, src) : Arg::Immediate(imm);
-        node.arg2 = dst;
+        const auto arg1 = m ? Arg::AddrModeXn(ArgType::kDn, src) : Arg::Immediate(imm);
+        node.op = Op::Typical(ShiftKindToOpcode(kind, dir), opsize, arg1, dst);
     }
     return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
 }
@@ -1597,7 +1507,7 @@ size_t DisasmNode::Disasm(const DataBuffer &code)
     assert(this->offset < code.occupied_size);
     // It is possible to have multiple DisasmNode::Disasm() calls, and there is
     // no point to disassemble it again if it already has opcode determined
-    if (this->opcode != OpCode::kNone) {
+    if (this->op.opcode != OpCode::kNone) {
         return this->size;
     }
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
@@ -1786,7 +1696,7 @@ static unsigned RegNum(const uint8_t xi)
     return xi & 0x7;
 }
 
-static inline size_t snprint_reg_mask(
+static size_t snprint_reg_mask(
         char *const buf, const size_t bufsz, const uint32_t regmask_arg, const bool predecrement)
 {
     const uint32_t regmask = regmask_arg & 0xffff;
@@ -1878,7 +1788,7 @@ int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
     return -1;
 }
 
-int DisasmNode::FPrint(FILE* const stream, const Settings &settings) const
+int Op::FPrint(FILE* const stream, const Settings &settings) const
 {
     assert(opcode != OpCode::kNone);
     char mnemonic_str[kMnemonicBufferSize]{};

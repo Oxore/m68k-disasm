@@ -331,6 +331,19 @@ struct Op {
     Condition condition{Condition::kT}; ///< For Scc, Bcc and Dbcc
     Arg arg1{}; ///< First argument, optional
     Arg arg2{}; ///< Second argument, optional, cannot be set if arg1 is not set
+    static constexpr auto Typical(
+            const OpCode opcode = OpCode::kNone,
+            const OpSize opsize = OpSize::kNone,
+            const Arg arg1 = Arg{},
+            const Arg arg2 = Arg{})
+    {
+        return Op{opcode, opsize, Condition::kT, arg1, arg2};
+    }
+    static constexpr auto Raw(const uint16_t instr)
+    {
+        return Op::Typical(OpCode::kRaw, OpSize::kNone, Arg::Raw(instr));
+    }
+    int FPrint(FILE*, const Settings&) const;
 };
 
 struct DisasmNode {
@@ -348,18 +361,12 @@ struct DisasmNode {
     bool is_call{};
     ReferenceNode *ref_by{};
     ReferenceNode *last_ref_by{};
-    OpCode opcode{OpCode::kNone}; ///< Identifies instruction (mnemonic)
-    /// Size specifier, the suffix `b`, `w` or `l`
-    OpSize size_spec{OpSize::kNone};
-    Condition condition{Condition::kT}; ///< For Scc, Bcc and Dbcc
-    Arg arg1{}, arg2{}; ///< Argument specifiers (in order as in asm listing)
     Op op{};
 
     /*! Disassembles instruction with arguments
      * returns size of whole instruction with arguments in bytes
      */
     size_t Disasm(const DataBuffer &code);
-    int FPrint(FILE*, const Settings&) const;
     void AddReferencedBy(uint32_t offset, ReferenceType);
     ~DisasmNode();
 private:
