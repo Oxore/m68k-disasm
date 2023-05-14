@@ -10,22 +10,6 @@
 #include <cstdint>
 #include <cstdio>
 
-enum class AddrMode: uint8_t {
-    kInvalid = 0,
-    kDn,
-    kAn,
-    kAnAddr,
-    kAnAddrIncr,
-    kAnAddrDecr,
-    kD16AnAddr,
-    kD8AnXiAddr,
-    kWord,
-    kLong,
-    kD16PCAddr,
-    kD8PCXiAddr,
-    kImmediate,
-};
-
 enum class OpSize: int {
     kByte = 0,
     kWord = 1,
@@ -33,90 +17,6 @@ enum class OpSize: int {
     kInvalid = 3,
     kNone = kInvalid,
     kShort, ///< Semantically is the same as kByte, pseudosize, used for Bcc
-};
-
-struct AddrModeArg {
-    AddrMode mode{};
-    uint8_t xn{}; /// Xn register number: 0..7
-    char r{}; /// Xi register type specifier letter: either 'd' or 'a'
-    uint8_t xi{}; /// Xi register number: 0..7
-    OpSize s{}; /// Size specifier of Xi or imm
-    int32_t value{}; /// Word, Long or Immediate
-    /// Size of the extension: 0, 2 or 4 bytes
-    constexpr size_t Size() const
-    {
-        switch (mode) {
-        case AddrMode::kInvalid:
-        case AddrMode::kDn:
-        case AddrMode::kAn:
-        case AddrMode::kAnAddr:
-        case AddrMode::kAnAddrIncr:
-        case AddrMode::kAnAddrDecr:
-            return 0;
-        case AddrMode::kD16AnAddr:
-        case AddrMode::kD8AnXiAddr:
-        case AddrMode::kWord:
-            return 2;
-        case AddrMode::kLong:
-            return 4;
-        case AddrMode::kD16PCAddr:
-        case AddrMode::kD8PCXiAddr:
-            return 2;
-        case AddrMode::kImmediate:
-            return s == OpSize::kLong ? 4 : 2;
-        }
-        return 0;
-    }
-    static constexpr AddrModeArg Dn(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kDn, xn};
-    }
-    static constexpr AddrModeArg An(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAn, xn};
-    }
-    static constexpr AddrModeArg AnAddr(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAnAddr, xn};
-    }
-    static constexpr AddrModeArg AnAddrIncr(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAnAddrIncr, xn};
-    }
-    static constexpr AddrModeArg AnAddrDecr(uint8_t xn)
-    {
-        return AddrModeArg{AddrMode::kAnAddrDecr, xn};
-    }
-    static constexpr AddrModeArg D16AnAddr(uint8_t xn, int16_t d16)
-    {
-        return AddrModeArg{AddrMode::kD16AnAddr, xn, 0, 0, OpSize::kWord, d16};
-    }
-    static constexpr AddrModeArg D8AnXiAddr(
-            uint8_t xn, char r, uint8_t xi, OpSize s, int8_t d8)
-    {
-        return AddrModeArg{AddrMode::kD8AnXiAddr, xn, r, xi, s, d8};
-    }
-    static constexpr AddrModeArg Word(int16_t w)
-    {
-        return AddrModeArg{AddrMode::kWord, 0, 0, 0, OpSize::kWord, w};
-    }
-    static constexpr AddrModeArg Long(int32_t l)
-    {
-        return AddrModeArg{AddrMode::kLong, 1, 0, 0, OpSize::kWord, l};
-    }
-    static constexpr AddrModeArg D16PCAddr(uint8_t xn, int16_t d16)
-    {
-        return AddrModeArg{AddrMode::kD16PCAddr, xn, 0, 0, OpSize::kWord, d16};
-    }
-    static constexpr AddrModeArg D8PCXiAddr(
-            uint8_t xn, char r, uint8_t xi, OpSize s, int8_t d8)
-    {
-        return AddrModeArg{AddrMode::kD8PCXiAddr, xn, r, xi, s, d8};
-    }
-    static constexpr AddrModeArg Immediate(OpSize s, int32_t value)
-    {
-        return AddrModeArg{AddrMode::kImmediate, 4, 0, 0, s, value};
-    }
 };
 
 enum class OpCode: uint8_t {
@@ -215,40 +115,52 @@ enum class Condition: uint8_t {
     kLE = 15,
 };
 
+enum class AddrMode: uint8_t {
+    kInvalid = 0,
+    kDn = 1,
+    kAn = 2,
+    kAnAddr = 3,
+    kAnAddrIncr = 4,
+    kAnAddrDecr = 5,
+    kD16AnAddr = 6,
+    kD8AnXiAddr = 7,
+    kWord = 8,
+    kLong = 9,
+    kD16PCAddr = 10,
+    kD8PCXiAddr = 11,
+    kImmediate = 12,
+};
+
 enum class ArgType: uint8_t {
-    kNone,
-    kRaw, ///< Emits "0xXXXX" for ".short"
-    kDn, ///< Dn
-    kAn, ///< An
-    kAnAddr, ///< (An)
-    kAnAddrIncr, ///< (An)+
-    kAnAddrDecr, ///< -(An)
-    kD16AnAddr, ///< (d16,An)
-    kD8AnXiAddr, ///< (d8,An,Xi)
-    kWord, ///< (xxx).W
-    kLong, ///< (xxx).L
-    kD16PCAddr, ///< (d16,PC)
-    kD8PCXiAddr, ///< (d8,PC,Xn)
-    kImmediate, ///< #imm
+    kNone = 0,
+    kDn = 1, ///< Dn
+    kAn = 2, ///< An
+    kAnAddr = 3, ///< (An)
+    kAnAddrIncr = 4, ///< (An)+
+    kAnAddrDecr = 5, ///< -(An)
+    kD16AnAddr = 6, ///< (d16,An)
+    kD8AnXiAddr = 7, ///< (d8,An,Xi)
+    kWord = 8, ///< (xxx).W
+    kLong = 9, ///< (xxx).L
+    kD16PCAddr = 10, ///< (d16,PC)
+    kD8PCXiAddr = 11, ///< (d8,PC,Xn)
+    kImmediate = 12, ///< #imm
     kRegMask,
     kRegMaskPredecrement,
     kDisplacement, ///< For BRA, BSR, Bcc and DBcc
     kCCR,
     kSR,
     kUSP,
-};
-
-enum class RegKind: uint8_t {
-    kDnWord,
-    kDnLong,
-    kAnWord,
-    kAnLong,
+    kRaw, ///< Emits "0xXXXX" for ".short"
 };
 
 struct D8AnPCXiAddr {
-    RegKind kind; ///< Kind of Xi reg, for kD8AnXiAddr and kD8PCXiAddr
     uint8_t an; ///< ID number of An reg, for kD8AnXiAddr only
-    uint8_t xi; ///< ID number of Xi reg, for kD8AnXiAddr and kD8PCXiAddr
+    /*! ID number of Xi reg (3 lower bits), for kD8AnXiAddr and kD8PCXiAddr.
+     * Bit 3 (mask 0x8) means 0 == Dn, 1 == An.
+     * Bit 4 (mask 0x10) means 0 == Word, 1 == Long.
+     */
+    uint8_t xi;
     int8_t d8; ///< Displacement, for kD8AnXiAddr and kD8PCXiAddr
 };
 
@@ -257,12 +169,14 @@ struct D16AnPCAddr {
     int16_t d16; ///< Displacement, for D16AnAddr and kD16PCAddr
 };
 
-static_assert(sizeof(D8AnPCXiAddr) == sizeof(uint32_t), "");
-static_assert(sizeof(D16AnPCAddr) == sizeof(uint32_t), "");
+static_assert(sizeof(D8AnPCXiAddr) <= sizeof(uint32_t), "");
+static_assert(sizeof(D16AnPCAddr) <= sizeof(uint32_t), "");
 
 struct Arg {
-    using Self = Arg;
-    ArgType type{ArgType::kNone};
+    union {
+        ArgType type{ArgType::kNone};
+        AddrMode mode;
+    };
     union {
         int32_t lword{}; ///< kLong, kWord, kDisplacement, kImmediate
         uint16_t uword; ///< kRegMask, kRaw
@@ -272,129 +186,113 @@ struct Arg {
         D8AnPCXiAddr d8_an_xi; ///< kD8AnXiAddr
         D8AnPCXiAddr d8_pc_xi; ///< kD8PCXiAddr
     };
-    static constexpr Self Raw(const uint16_t instr) {
-        Arg a{ArgType::kRaw, 0};
-        a.uword = instr;
-        return a;
+    /// Size of the instruction extension: 0, 2 or 4 bytes
+    constexpr size_t Size(const OpSize s) const
+    {
+        switch (mode) {
+        case AddrMode::kInvalid:
+        case AddrMode::kDn:
+        case AddrMode::kAn:
+        case AddrMode::kAnAddr:
+        case AddrMode::kAnAddrIncr:
+        case AddrMode::kAnAddrDecr:
+            return 0;
+        case AddrMode::kD16AnAddr:
+        case AddrMode::kD8AnXiAddr:
+        case AddrMode::kWord:
+            return 2;
+        case AddrMode::kLong:
+            return 4;
+        case AddrMode::kD16PCAddr:
+        case AddrMode::kD8PCXiAddr:
+            return 2;
+        case AddrMode::kImmediate:
+            // Byte and Word immediate are of 2 bytes length
+            return s == OpSize::kLong ? 4 : 2;
+        }
+        return 0;
     }
-    static constexpr Self RegMask(const uint16_t regmask) {
-        Arg a{ArgType::kRegMask, 0};
-        a.uword = regmask;
-        return a;
-    }
-    static constexpr Self RegMaskPredecrement(const uint16_t regmask) {
-        Arg a{ArgType::kRegMaskPredecrement, 0};
-        a.uword = regmask;
-        return a;
-    }
-    static constexpr Self Displacement(const int32_t displacement) {
-        Arg a{ArgType::kDisplacement, 0};
-        a.lword = displacement;
-        return a;
-    }
-    static constexpr Self Immediate(int32_t value) {
-        Arg a{ArgType::kImmediate, 0};
-        a.lword = value;
-        return a;
-    }
-    static constexpr Self CCR() { return Arg{ArgType::kCCR, 0}; }
-    static constexpr Self SR() { return Arg{ArgType::kSR, 0}; }
-    static constexpr Self USP() { return Arg{ArgType::kUSP, 0}; }
-    static constexpr Self AddrModeXn(const ArgType type, const uint8_t xn) {
+    static constexpr auto AddrModeXn(const ArgType type, const uint8_t xn) {
         Arg a{type, 0};
         a.xn = xn;
         return a;
     }
-private:
-    static constexpr Self addrModeD16AnAddr(const D16AnPCAddr d16_an) {
+    static constexpr auto Dn(const uint8_t xn) { return AddrModeXn(ArgType::kDn, xn); }
+    static constexpr auto An(const uint8_t xn) { return AddrModeXn(ArgType::kAn, xn); }
+    static constexpr auto AnAddr(const uint8_t xn) { return AddrModeXn(ArgType::kAnAddr, xn); }
+    static constexpr auto AnAddrIncr(const uint8_t xn)
+    {
+        return AddrModeXn(ArgType::kAnAddrIncr, xn);
+    }
+    static constexpr auto AnAddrDecr(const uint8_t xn)
+    {
+        return AddrModeXn(ArgType::kAnAddrDecr, xn);
+    }
+    static constexpr auto D16AnAddr(const uint8_t xn, const int16_t d16)
+    {
         Arg a{ArgType::kD16AnAddr, 0};
-        a.d16_an = d16_an;
+        a.d16_an = D16AnPCAddr{xn, d16};
         return a;
     }
-    static constexpr Self addrModeD16PCAddr(const D16AnPCAddr d16_pc) {
+    static constexpr auto D16PCAddr(const int16_t d16)
+    {
         Arg a{ArgType::kD16PCAddr, 0};
-        a.d16_pc = d16_pc;
+        a.d16_pc = D16AnPCAddr{0, d16};
         return a;
     }
-    static constexpr Self addrModeWord(const int16_t value) {
+    static constexpr auto Word(const int16_t w)
+    {
         Arg a{ArgType::kWord, 0};
-        a.lword = value;
+        a.lword = w;
         return a;
     }
-    static constexpr Self addrModeLong(const int32_t value) {
+    static constexpr auto Long(const int32_t l)
+    {
         Arg a{ArgType::kLong, 0};
-        a.lword = value;
+        a.lword = l;
         return a;
     }
-    static constexpr Self addrModeD8AnAddr(const D8AnPCXiAddr d8_an_xi) {
+    static constexpr auto D8AnXiAddr(
+            const uint8_t xn, const uint8_t xi, const OpSize s, const int8_t d8)
+    {
         Arg a{ArgType::kD8AnXiAddr, 0};
-        a.d8_an_xi = d8_an_xi;
+        a.d8_an_xi = D8AnPCXiAddr{xn, uint8_t(xi | (s == OpSize::kLong ? 0x10u : 0u)), d8};
         return a;
     }
-    static constexpr Self addrModeD8PCAddr(const D8AnPCXiAddr d8_pc_xi) {
+    static constexpr auto D8PCXiAddr(
+            const uint8_t xn, const uint8_t xi, const OpSize s, const int8_t d8)
+    {
         Arg a{ArgType::kD8PCXiAddr, 0};
-        a.d8_pc_xi = d8_pc_xi;
+        a.d8_pc_xi = D8AnPCXiAddr{xn, uint8_t(xi | (s == OpSize::kLong ? 0x10u : 0u)), d8};
         return a;
     }
-    static constexpr Self addrModeImmediate(const int32_t value) {
+    static constexpr auto Immediate(const int32_t value) {
         Arg a{ArgType::kImmediate, 0};
         a.lword = value;
         return a;
     }
-    static constexpr RegKind regKindFromRegCharSizeChar(char r, OpSize s)
-    {
-        if (r == 'd' && s == OpSize::kWord) {
-            return RegKind::kDnWord;
-        } else if (r == 'd' && s == OpSize::kLong) {
-            return RegKind::kDnLong;
-        } else if (r == 'a' && s == OpSize::kWord) {
-            return RegKind::kAnWord;
-        } else if (r == 'a' && s == OpSize::kLong) {
-            return RegKind::kAnLong;
-        }
-        return RegKind::kDnWord;
+    static constexpr auto RegMask(const uint16_t regmask) {
+        Arg a{ArgType::kRegMask, 0};
+        a.uword = regmask;
+        return a;
     }
-public:
-    static constexpr Self FromAddrModeArg(AddrModeArg arg) {
-        switch (arg.mode) {
-        case AddrMode::kInvalid:
-            return Arg{};
-        case AddrMode::kDn:
-            return AddrModeXn(ArgType::kDn, arg.xn);
-        case AddrMode::kAn:
-            return AddrModeXn(ArgType::kAn, arg.xn);
-        case AddrMode::kAnAddr:
-            return AddrModeXn(ArgType::kAnAddr, arg.xn);
-        case AddrMode::kAnAddrIncr:
-            return AddrModeXn(ArgType::kAnAddrIncr, arg.xn);
-        case AddrMode::kAnAddrDecr:
-            return AddrModeXn(ArgType::kAnAddrDecr, arg.xn);
-        case AddrMode::kD16AnAddr:
-            return addrModeD16AnAddr(D16AnPCAddr{arg.xn, static_cast<int16_t>(arg.value)});
-        case AddrMode::kD8AnXiAddr:
-            return addrModeD8AnAddr(D8AnPCXiAddr{
-                    regKindFromRegCharSizeChar(arg.r, arg.s),
-                    arg.xn,
-                    arg.xi,
-                    static_cast<int8_t>(arg.value),
-                    });
-        case AddrMode::kWord:
-            return addrModeWord(arg.value);
-        case AddrMode::kLong:
-            return addrModeLong(arg.value);
-        case AddrMode::kD16PCAddr:
-            return addrModeD16PCAddr(D16AnPCAddr{0, static_cast<int16_t>(arg.value)});
-        case AddrMode::kD8PCXiAddr:
-            return addrModeD8PCAddr(D8AnPCXiAddr{
-                    regKindFromRegCharSizeChar(arg.r, arg.s),
-                    0,
-                    arg.xi,
-                    static_cast<int8_t>(arg.value),
-                    });
-        case AddrMode::kImmediate:
-            return addrModeImmediate(arg.value);
-        }
-        return Arg{};
+    static constexpr auto RegMaskPredecrement(const uint16_t regmask) {
+        Arg a{ArgType::kRegMaskPredecrement, 0};
+        a.uword = regmask;
+        return a;
+    }
+    static constexpr auto Displacement(const int32_t displacement) {
+        Arg a{ArgType::kDisplacement, 0};
+        a.lword = displacement;
+        return a;
+    }
+    static constexpr auto CCR() { return Arg{ArgType::kCCR, 0}; }
+    static constexpr auto SR() { return Arg{ArgType::kSR, 0}; }
+    static constexpr auto USP() { return Arg{ArgType::kUSP, 0}; }
+    static constexpr auto Raw(const uint16_t instr) {
+        Arg a{ArgType::kRaw, 0};
+        a.uword = instr;
+        return a;
     }
     int SNPrint(char *buf, size_t bufsz, const Settings&) const;
 };
@@ -426,6 +324,15 @@ struct ReferenceNode {
     uint32_t refs_count{};
 };
 
+struct Op {
+    OpCode opcode{OpCode::kNone}; ///< Identifies instruction (mnemonic)
+    /// Size specifier, the suffix `b`, `w` or `l`
+    OpSize size_spec{OpSize::kNone};
+    Condition condition{Condition::kT}; ///< For Scc, Bcc and Dbcc
+    Arg arg1{}; ///< First argument, optional
+    Arg arg2{}; ///< Second argument, optional, cannot be set if arg1 is not set
+};
+
 struct DisasmNode {
     const TracedNodeType type{};
     /// Absolute offset of the instruction (PC value basically)
@@ -441,11 +348,12 @@ struct DisasmNode {
     bool is_call{};
     ReferenceNode *ref_by{};
     ReferenceNode *last_ref_by{};
-    OpCode opcode{OpCode::kNone}; ///< Should replace `mnemonic` field
+    OpCode opcode{OpCode::kNone}; ///< Identifies instruction (mnemonic)
     /// Size specifier, the suffix `b`, `w` or `l`
     OpSize size_spec{OpSize::kNone};
     Condition condition{Condition::kT}; ///< For Scc, Bcc and Dbcc
-    Arg arg1{}, arg2{}; ///< Should replace `arguments` field
+    Arg arg1{}, arg2{}; ///< Argument specifiers (in order as in asm listing)
+    Op op{};
 
     /*! Disassembles instruction with arguments
      * returns size of whole instruction with arguments in bytes

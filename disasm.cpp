@@ -32,46 +32,50 @@ enum class ShiftKind: int {
     kRotate = 3,
 };
 
-constexpr AddrModeArg FetchImmediate(const uint32_t offset, const DataBuffer &code, const OpSize s)
+constexpr Arg FetchImmediate(const uint32_t offset, const DataBuffer &code, const OpSize s)
 {
     if (s == OpSize::kInvalid) {
-        return AddrModeArg{};
+        return Arg{};
     } else if (s == OpSize::kLong) {
         if (offset + kInstructionSizeStepBytes < code.occupied_size) {
             const int32_t value = GetI32BE(code.buffer + offset);
-            return AddrModeArg::Immediate(s, value);
+            return Arg::Immediate(value);
         }
     } else if (offset < code.occupied_size) {
         const int16_t value = GetI16BE(code.buffer + offset);
         if (s == OpSize::kByte) {
+            // Technically it is impossible to have value lower that -128 in 8
+            // bits signed integer, but the second byte being 0xff is actually
+            // a valid thing and it is how values from -255 to -129 are
+            // represented.
             if (value > 255 || value < -255) {
                 // Invalid immediate value for instruction with .b suffix
-                return AddrModeArg{};
+                return Arg{};
             }
         }
-        return AddrModeArg::Immediate(s, value);
+        return Arg::Immediate(value);
     }
-    return AddrModeArg{};
+    return Arg{};
 }
 
-constexpr AddrModeArg FetchAddrModeArg(
+constexpr Arg FetchArg(
         const uint32_t offset, const DataBuffer &code, const int m, const int xn, const OpSize s)
 {
     switch (m) {
     case 0: // Dn
-        return AddrModeArg::Dn(xn);
+        return Arg::Dn(xn);
     case 1: // An
-        return AddrModeArg::An(xn);
+        return Arg::An(xn);
     case 2: // (An)
-        return AddrModeArg::AnAddr(xn);
+        return Arg::AnAddr(xn);
     case 3: // (An)+
-        return AddrModeArg::AnAddrIncr(xn);
+        return Arg::AnAddrIncr(xn);
     case 4: // -(An)
-        return AddrModeArg::AnAddrDecr(xn);
+        return Arg::AnAddrDecr(xn);
     case 5: // (d16, An), Additional Word
         if (offset < code.occupied_size) {
             const int16_t d16 = GetI16BE(code.buffer + offset);
-            return AddrModeArg::D16AnAddr(xn, d16);
+            return Arg::D16AnAddr(xn, d16);
         }
         break;
     case 6: // (d8, An, Xi), Brief Extension Word
@@ -82,11 +86,11 @@ constexpr AddrModeArg FetchAddrModeArg(
                 // i.e. xxxx_x000_xxxx_xxxx
                 break;
             }
-            const char r = ((briefext >> 15) & 1) ? 'a' : 'd';
-            const uint8_t xi = (briefext >> 12) & 7;
+            // Xi number (lower 3 bits, mask 0x7) with An/Dn bit (mask 0x8)
+            const uint8_t xi = (briefext >> 12) & 0xf;
             const OpSize s = ((briefext >> 11) & 1) ? OpSize::kLong : OpSize::kWord;
             const int8_t d8 = briefext & 0xff;
-            return AddrModeArg::D8AnXiAddr(xn, r, xi, s, d8);
+            return Arg::D8AnXiAddr(xn, xi, s, d8);
         }
         break;
     case 7:
@@ -94,19 +98,19 @@ constexpr AddrModeArg FetchAddrModeArg(
         case 0: // (xxx).W, Additional Word
             if (offset < code.occupied_size) {
                 const int32_t w = GetI16BE(code.buffer + offset);
-                return AddrModeArg::Word(w);
+                return Arg::Word(w);
             }
             break;
         case 1: // (xxx).L, Additional Long
             if (offset + kInstructionSizeStepBytes < code.occupied_size) {
                 const int32_t l = GetI32BE(code.buffer + offset);
-                return AddrModeArg::Long(l);
+                return Arg::Long(l);
             }
             break;
         case 2: // (d16, PC), Additional Word
             if (offset < code.occupied_size) {
                 const int16_t d16 = GetI16BE(code.buffer + offset);
-                return AddrModeArg::D16PCAddr(xn, d16);
+                return Arg::D16PCAddr(d16);
             }
             break;
         case 3: // (d8, PC, Xi), Brief Extension Word
@@ -117,11 +121,11 @@ constexpr AddrModeArg FetchAddrModeArg(
                     // i.e. xxxx_x000_xxxx_xxxx
                     break;
                 }
-                const char r = ((briefext >> 15) & 1) ? 'a' : 'd';
-                const uint8_t xi = (briefext >> 12) & 7;
+                // Xi number (lower 3 bits, mask 0x7) with An/Dn bit (mask 0x8)
+                const uint8_t xi = (briefext >> 12) & 0xf;
                 const OpSize s = ((briefext >> 11) & 1) ? OpSize::kLong : OpSize::kWord;
                 const int8_t d8 = briefext & 0xff;
-                return AddrModeArg::D8PCXiAddr(xn, r, xi, s, d8);
+                return Arg::D8PCXiAddr(xn, xi, s, d8);
             }
             break;
         case 4: // #imm
@@ -133,16 +137,16 @@ constexpr AddrModeArg FetchAddrModeArg(
         }
         break;
     }
-    return AddrModeArg{};
+    return Arg{};
 }
 
-static inline AddrModeArg FetchAddrModeArg(
+static inline Arg FetchArg(
         const uint32_t offset, const DataBuffer &code, const uint16_t instr, const OpSize s)
 {
     const int addrmode = instr & 0x3f;
     const int m = (addrmode >> 3) & 7;
     const int xn = addrmode & 7;
-    return FetchAddrModeArg(offset, code, m, xn, s);
+    return FetchArg(offset, code, m, xn, s);
 }
 
 static size_t disasm_verbatim(DisasmNode &node, const uint16_t instr)
@@ -156,7 +160,8 @@ static size_t disasm_verbatim(DisasmNode &node, const uint16_t instr)
 static size_t disasm_jsr_jmp(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const JKind jtype)
 {
-    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, OpSize::kWord);
+    const OpSize opsize = OpSize::kWord;
+    const auto a = FetchArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn: // 4e80..4e87 / 4ec0..4ec7
@@ -180,7 +185,7 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kWord: // 4eb8 / 4ef8
         {
             // FIXME support s.abs_marks option for this instruction
-            const uint32_t branch_addr = static_cast<uint32_t>(a.value);
+            const uint32_t branch_addr = static_cast<uint32_t>(a.lword);
             node.branch_addr = branch_addr;
             node.has_branch_addr = true;
         }
@@ -188,7 +193,7 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kLong: // 4eb9 / 4ef9
         {
             // FIXME support s.abs_marks option for this instruction
-            const uint32_t branch_addr = static_cast<uint32_t>(a.value);
+            const uint32_t branch_addr = static_cast<uint32_t>(a.lword);
             node.branch_addr = branch_addr;
             node.has_branch_addr = true;
         }
@@ -196,7 +201,7 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kD16PCAddr: // 4eba / 4efa
         {
             // FIXME support s.abs_marks option for this instruction
-            const uint32_t branch_addr = static_cast<uint32_t>(a.value) + kInstructionSizeStepBytes;
+            const uint32_t branch_addr = static_cast<uint32_t>(a.lword) + kInstructionSizeStepBytes;
             node.branch_addr = branch_addr;
             node.has_branch_addr = true;
         }
@@ -211,20 +216,20 @@ static size_t disasm_jsr_jmp(
     node.is_call = (jtype == JKind::kJsr);
     node.opcode = (jtype == JKind::kJsr) ? OpCode::kJSR : OpCode::kJMP;
     node.size_spec = OpSize::kNone;
-    node.arg1 = Arg::FromAddrModeArg(a);
-    return node.size = kInstructionSizeStepBytes + a.Size();
+    node.arg1 = a;
+    return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
 static inline size_t disasm_ext(
         DisasmNode &node,
         const OpSize opsize,
-        const AddrModeArg arg)
+        const Arg arg)
 {
     assert(arg.mode == AddrMode::kDn);
     node.opcode = OpCode::kEXT;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(arg);
-    return node.size = kInstructionSizeStepBytes + arg.Size();
+    node.arg1 = arg;
+    return node.size = kInstructionSizeStepBytes + arg.Size(opsize);
 }
 
 static size_t disasm_ext_movem(
@@ -235,7 +240,7 @@ static size_t disasm_ext_movem(
     const unsigned xn = instr & 7;
     const auto opsize = static_cast<OpSize>(((instr >> 6) & 1) + 1);
     if (m == 0 && dir == MoveDirection::kRegisterToMemory) {
-        return disasm_ext(node, opsize, AddrModeArg::Dn(xn));
+        return disasm_ext(node, opsize, Arg::Dn(xn));
     }
     if (node.offset + kInstructionSizeStepBytes >= code.occupied_size) {
         // Not enough space for regmask, but maybe it is just EXT?
@@ -246,7 +251,7 @@ static size_t disasm_ext_movem(
         // This is just not representable: at least one register must be specified
         return disasm_verbatim(node, instr);
     }
-    const auto a = FetchAddrModeArg(
+    const auto a = FetchArg(
             node.offset + kInstructionSizeStepBytes * 2, code, m, xn, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
@@ -282,20 +287,21 @@ static size_t disasm_ext_movem(
     node.opcode = OpCode::kMOVEM;
     node.size_spec = opsize;
     if (dir == MoveDirection::kMemoryToRegister) {
-        node.arg1 = Arg::FromAddrModeArg(a);
+        node.arg1 = a;
         node.arg2 = (a.mode == AddrMode::kAnAddrDecr) ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
     } else {
         node.arg1 = (a.mode == AddrMode::kAnAddrDecr) ? Arg::RegMaskPredecrement(regmask) : Arg::RegMask(regmask);
-        node.arg2 = Arg::FromAddrModeArg(a);
+        node.arg2 = a;
     }
-    return node.size = kInstructionSizeStepBytes * 2 + a.Size();
+    return node.size = kInstructionSizeStepBytes * 2 + a.Size(opsize);
 }
 
 static size_t disasm_lea(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
-    const auto addr = FetchAddrModeArg(
-            node.offset + kInstructionSizeStepBytes, code, instr, OpSize::kLong);
+    const OpSize opsize = OpSize::kLong;
+    const auto addr = FetchArg(
+            node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn:
@@ -317,19 +323,20 @@ static size_t disasm_lea(
         return disasm_verbatim(node, instr);
     }
     const unsigned an = ((instr >> 9) & 7);
-    const auto reg = AddrModeArg::An(an);
+    const auto reg = Arg::An(an);
     node.opcode = OpCode::kLEA;
     node.size_spec = OpSize::kLong;
-    node.arg1 = Arg::FromAddrModeArg(addr);
-    node.arg2 = Arg::FromAddrModeArg(reg);
-    return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+    node.arg1 = addr;
+    node.arg2 = reg;
+    return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
 
 static size_t disasm_chk(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
-    const auto src = FetchAddrModeArg(
-            node.offset + kInstructionSizeStepBytes, code, instr, OpSize::kWord);
+    const OpSize opsize = OpSize::kWord;
+    const auto src = FetchArg(
+            node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -351,12 +358,12 @@ static size_t disasm_chk(
         return disasm_verbatim(node, instr);
     }
     const unsigned dn = ((instr >> 9) & 7);
-    const auto dst = AddrModeArg::Dn(dn);
+    const auto dst = Arg::Dn(dn);
     node.opcode = OpCode::kCHK;
     node.size_spec = OpSize::kWord;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_bra_bsr_bcc(
@@ -413,24 +420,24 @@ static inline size_t disasm_movep(
     const unsigned an = instr & 7;
     const OpSize opsize = ((instr >> 6) & 1) ? OpSize::kLong : OpSize::kWord;
     const auto dir = static_cast<MoveDirection>(!((instr >> 7) & 1));
-    const auto addr = FetchAddrModeArg(
+    const auto addr = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, 5, an, opsize);
     if (addr.mode == AddrMode::kInvalid) {
         // Boundary check failed, most likely
         return disasm_verbatim(node, instr);
     }
     assert(addr.mode == AddrMode::kD16AnAddr);
-    const auto reg = AddrModeArg::Dn(dn);
+    const auto reg = Arg::Dn(dn);
     node.opcode = OpCode::kMOVEP;
     node.size_spec = opsize;
     if (dir == MoveDirection::kRegisterToMemory) {
-        node.arg1 = Arg::FromAddrModeArg(reg);
-        node.arg2 = Arg::FromAddrModeArg(addr);
+        node.arg1 = reg;
+        node.arg2 = addr;
     } else {
-        node.arg1 = Arg::FromAddrModeArg(addr);
-        node.arg2 = Arg::FromAddrModeArg(reg);
+        node.arg1 = addr;
+        node.arg2 = reg;
     }
-    return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+    return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
 
 static size_t disasm_src_arg_bitops_movep(
@@ -447,7 +454,7 @@ static size_t disasm_src_arg_bitops_movep(
     const unsigned xn = instr & 7;
     // Fetch AddrMode::kDn if has_dn_src, otherwise fetch AddrMode::kImmediate
     // byte
-    const auto src = FetchAddrModeArg(
+    const auto src = FetchArg(
             node.offset + kInstructionSizeStepBytes,
             code,
             (has_dn_src) ? 0 : 7,
@@ -462,8 +469,9 @@ static size_t disasm_src_arg_bitops_movep(
         assert(dn == 4);
         assert(src.mode == AddrMode::kImmediate);
     }
-    const auto dst = FetchAddrModeArg(
-            node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, OpSize::kWord);
+    const OpSize opsize = OpSize::kWord;
+    const auto dst = FetchArg(
+            node.offset + kInstructionSizeStepBytes + src.Size(opsize), code, m, xn, opsize);
     const unsigned opcode = (instr >> 6) & 3;
     switch (dst.mode) {
     case AddrMode::kInvalid:
@@ -492,9 +500,9 @@ static size_t disasm_src_arg_bitops_movep(
     }
     node.opcode = OpCodeForBitOps(opcode);
     node.size_spec = dst.mode == AddrMode::kDn ? OpSize::kLong : OpSize::kByte;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c)
@@ -503,11 +511,11 @@ static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c
 }
 
 static size_t disasm_logical_immediate_to(
-        DisasmNode &node, OpCode opcode, OpSize opsize, AddrModeArg imm)
+        DisasmNode &node, OpCode opcode, OpSize opsize, Arg imm)
 {
     node.opcode = opcode;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(imm);
+    node.arg1 = imm;
     node.arg2 = (opsize == OpSize::kByte) ? Arg::CCR() : Arg::SR();
     return node.size = kInstructionSizeStepBytes * 2;
 }
@@ -571,8 +579,8 @@ static size_t disasm_bitops_movep(
     if (m == 7 && xn == 4) {
         return disasm_logical_immediate_to(node, mnemonic, opsize, src);
     }
-    const auto dst = FetchAddrModeArg(
-            node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, opsize);
+    const auto dst = FetchArg(
+            node.offset + kInstructionSizeStepBytes + src.Size(opsize), code, m, xn, opsize);
     switch (dst.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -600,9 +608,9 @@ static size_t disasm_bitops_movep(
     }
     node.opcode = mnemonic;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_move_movea(
@@ -611,7 +619,7 @@ static size_t disasm_move_movea(
     const int opsize_raw = (instr >> 12) & 3;
     const OpSize opsize = (opsize_raw == 1)
         ? OpSize::kByte : (opsize_raw == 3 ? OpSize::kWord : OpSize::kLong);
-    const auto src = FetchAddrModeArg(
+    const auto src = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     if (src.mode == AddrMode::kInvalid) {
         return disasm_verbatim(node, instr);
@@ -622,8 +630,8 @@ static size_t disasm_move_movea(
     }
     const int m = (instr >> 6) & 7;
     const int xn = (instr >> 9) & 7;
-    const auto dst = FetchAddrModeArg(
-            node.offset + kInstructionSizeStepBytes + src.Size(), code, m, xn, opsize);
+    const auto dst = FetchArg(
+            node.offset + kInstructionSizeStepBytes + src.Size(opsize), code, m, xn, opsize);
     switch (dst.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -649,16 +657,16 @@ static size_t disasm_move_movea(
     }
     node.opcode = (dst.mode == AddrMode::kAn) ? OpCode::kMOVEA : OpCode::kMOVE;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_move_from_sr(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const auto opsize = OpSize::kWord;
-    const auto dst = FetchAddrModeArg(
+    const auto dst = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (dst.mode) {
     case AddrMode::kInvalid:
@@ -683,15 +691,15 @@ static size_t disasm_move_from_sr(
     node.opcode = OpCode::kMOVE;
     node.size_spec = opsize;
     node.arg1 = Arg::SR();
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + dst.Size();
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
 }
 
 static size_t disasm_move_to(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const ArgType reg)
 {
     const auto opsize = OpSize::kWord;
-    const auto src = FetchAddrModeArg(
+    const auto src = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
@@ -714,9 +722,9 @@ static size_t disasm_move_to(
     }
     node.opcode = OpCode::kMOVE;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(src);
+    node.arg1 = src;
     node.arg2 = Arg{reg, 0};
-    return node.size = kInstructionSizeStepBytes + src.Size();
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize);
 }
 
 static OpCode opcode_for_negx_clr_neg_not(const unsigned opcode)
@@ -750,7 +758,7 @@ static size_t disasm_move_negx_clr_neg_not(
         assert(false);
         return disasm_verbatim(node, instr);
     }
-    const auto a = FetchAddrModeArg(
+    const auto a = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
@@ -774,8 +782,8 @@ static size_t disasm_move_negx_clr_neg_not(
     }
     node.opcode = opcode_for_negx_clr_neg_not(opcode);
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(a);
-    return node.size = kInstructionSizeStepBytes + a.Size();
+    node.arg1 = a;
+    return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
 static inline size_t disasm_trivial(
@@ -790,7 +798,7 @@ static inline size_t disasm_tas(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const auto opsize = OpSize::kByte;
-    const auto a = FetchAddrModeArg(
+    const auto a = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
@@ -814,8 +822,8 @@ static inline size_t disasm_tas(
     }
     node.opcode = OpCode::kTAS;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(a);
-    return node.size = kInstructionSizeStepBytes + a.Size();
+    node.arg1 = a;
+    return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
 static size_t disasm_tst_tas_illegal(
@@ -830,7 +838,7 @@ static size_t disasm_tst_tas_illegal(
         }
         return disasm_tas(node, instr, code);
     }
-    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, m, xn, opsize);
+    const auto a = FetchArg(node.offset + kInstructionSizeStepBytes, code, m, xn, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -853,8 +861,8 @@ static size_t disasm_tst_tas_illegal(
     }
     node.opcode = OpCode::kTST;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(a);
-    return node.size = kInstructionSizeStepBytes + a.Size();
+    node.arg1 = a;
+    return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
 static size_t disasm_trap(DisasmNode &node, const uint16_t instr)
@@ -884,8 +892,8 @@ static size_t disasm_link_unlink(DisasmNode &node, const uint16_t instr, const D
     node.opcode = OpCode::kLINK;
     node.size_spec = opsize;
     node.arg1 = Arg::AddrModeXn(ArgType::kAn, xn);
-    node.arg2 = Arg::FromAddrModeArg(src);
-    return node.size = kInstructionSizeStepBytes + src.Size();
+    node.arg2 = src;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize);
 }
 
 static size_t disasm_move_usp(DisasmNode &node, const uint16_t instr)
@@ -907,8 +915,9 @@ static size_t disasm_move_usp(DisasmNode &node, const uint16_t instr)
 static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const bool is_nbcd = !((instr >> 6) & 1);
-    const auto arg = FetchAddrModeArg(
-            node.offset + kInstructionSizeStepBytes, code, instr, OpSize::kWord);
+    const OpSize opsize = OpSize::kWord;
+    const auto arg = FetchArg(
+            node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     bool is_swap{};
     switch (arg.mode) {
     case AddrMode::kInvalid:
@@ -944,8 +953,8 @@ static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const
     }
     node.opcode = is_nbcd ? OpCode::kNBCD : is_swap ? OpCode::kSWAP : OpCode::kPEA;
     node.size_spec = is_nbcd ? OpSize::kByte : is_swap ? OpSize::kWord : OpSize::kLong;
-    node.arg1 = Arg::FromAddrModeArg(arg);
-    return node.size = kInstructionSizeStepBytes + arg.Size();
+    node.arg1 = arg;
+    return node.size = kInstructionSizeStepBytes + arg.Size(opsize);
 }
 
 static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
@@ -956,7 +965,7 @@ static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataBuff
     }
     node.opcode = OpCode::kSTOP;
     node.size_spec = OpSize::kNone;
-    node.arg1 = Arg::FromAddrModeArg(a);
+    node.arg1 = a;
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
@@ -1006,7 +1015,7 @@ static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataB
 static size_t disasm_addq_subq(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpSize opsize)
 {
-    const auto a = FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize);
+    const auto a = FetchArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1037,8 +1046,8 @@ static size_t disasm_addq_subq(
     node.opcode = ((instr >> 8) & 1) ? OpCode::kSUBQ : OpCode::kADDQ;
     node.size_spec = opsize;
     node.arg1 = Arg::Immediate(imm);
-    node.arg2 = Arg::FromAddrModeArg(a);
-    return node.size = kInstructionSizeStepBytes + a.Size();
+    node.arg2 = a;
+    return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
 static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
@@ -1064,8 +1073,9 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuff
 
 static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
-    const auto a = FetchAddrModeArg(
-            node.offset + kInstructionSizeStepBytes, code, instr, OpSize::kWord);
+    const OpSize opsize = OpSize::kWord;
+    const auto a = FetchArg(
+            node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1090,8 +1100,8 @@ static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const Data
     node.opcode = OpCode::kScc;
     node.condition = static_cast<Condition>((instr >> 8) & 0xf);
     node.size_spec = OpSize::kNone;
-    node.arg1 = Arg::FromAddrModeArg(a);
-    return node.size = kInstructionSizeStepBytes + a.Size();
+    node.arg1 = a;
+    return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
 static size_t disasm_addq_subq_scc_dbcc(DisasmNode &n, const uint16_t instr, const DataBuffer &c)
@@ -1110,13 +1120,14 @@ static size_t disasm_moveq(DisasmNode &node, const uint16_t instr)
         return disasm_verbatim(node, instr);
     }
     const int xn = (instr >> 9) & 7;
-    const auto dst = AddrModeArg::Dn(xn);
+    const auto dst = Arg::Dn(xn);
     const int8_t data = instr & 0xff;
+    const OpSize opsize = OpSize::kLong;
     node.opcode = OpCode::kMOVEQ;
-    node.size_spec = OpSize::kLong;
+    node.size_spec = opsize;
     node.arg1 = Arg::Immediate(data);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + dst.Size();
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
 
 }
 
@@ -1127,7 +1138,7 @@ static size_t disasm_divu_divs_mulu_muls(
         const OpCode opcode)
 {
     const auto opsize = OpSize::kWord;
-    const auto src = FetchAddrModeArg(
+    const auto src = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
@@ -1150,12 +1161,12 @@ static size_t disasm_divu_divs_mulu_muls(
         break;
     }
     const unsigned dn = (instr >> 9) & 7;
-    const auto dst = AddrModeArg::Dn(dn);
+    const auto dst = Arg::Dn(dn);
     node.opcode = opcode;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + dst.Size() + src.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + dst.Size(opsize) + src.Size(opsize);
 }
 
 static size_t disasm_addx_subx_abcd_sbcd(
@@ -1167,16 +1178,16 @@ static size_t disasm_addx_subx_abcd_sbcd(
     const int m = (instr >> 3) & 1;
     const int xn = instr & 7;
     const int xi = (instr >> 9) & 7;
-    const auto src = m ? AddrModeArg::AnAddrDecr(xn) : AddrModeArg::Dn(xn);
-    const auto dst = m ? AddrModeArg::AnAddrDecr(xi) : AddrModeArg::Dn(xi);
+    const auto src = m ? Arg::AnAddrDecr(xn) : Arg::Dn(xn);
+    const auto dst = m ? Arg::AnAddrDecr(xi) : Arg::Dn(xi);
     node.opcode = opcode;
     // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily consumes
     // SBCD.B and others. That's why `skip_suffix` flag is needed, specifically
     // for ABCD mnemonic. It is probably a bug in GNU AS.
     node.size_spec = (opcode == OpCode::kABCD) ? OpSize::kNone : opsize;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_or_and(
@@ -1187,7 +1198,7 @@ static size_t disasm_or_and(
         const OpCode opcode)
 {
     const bool dir_to_addr = (instr >> 8) & 1;
-    const auto addr = FetchAddrModeArg(
+    const auto addr = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
@@ -1222,17 +1233,17 @@ static size_t disasm_or_and(
         }
         break;
     }
-    const auto reg = AddrModeArg::Dn((instr >> 9) & 7);
+    const auto reg = Arg::Dn((instr >> 9) & 7);
     node.opcode = opcode;
     node.size_spec = opsize;
     if (dir_to_addr) {
-        node.arg1 = Arg::FromAddrModeArg(reg);
-        node.arg2 = Arg::FromAddrModeArg(addr);
+        node.arg1 = reg;
+        node.arg2 = addr;
     } else {
-        node.arg1 = Arg::FromAddrModeArg(addr);
-        node.arg2 = Arg::FromAddrModeArg(reg);
+        node.arg1 = addr;
+        node.arg2 = reg;
     }
-    return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+    return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
 
 static size_t disasm_divu_divs_sbcd_or(
@@ -1255,7 +1266,7 @@ static inline size_t disasm_adda_suba_cmpa(
         DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
-    const auto src = FetchAddrModeArg(
+    const auto src = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
@@ -1275,12 +1286,12 @@ static inline size_t disasm_adda_suba_cmpa(
         break;
     }
     const unsigned an = (instr >> 9) & 7;
-    const auto dst = AddrModeArg::An(an);
+    const auto dst = Arg::An(an);
     node.opcode = opcode;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_add_sub_cmp(
@@ -1291,7 +1302,7 @@ static size_t disasm_add_sub_cmp(
         const OpSize opsize,
         const bool dir_to_addr)
 {
-    const auto addr = FetchAddrModeArg(
+    const auto addr = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
@@ -1327,17 +1338,17 @@ static size_t disasm_add_sub_cmp(
         break;
     }
     const unsigned dn = (instr >> 9) & 7;
-    const auto reg = AddrModeArg::Dn(dn);
+    const auto reg = Arg::Dn(dn);
     node.opcode = opcode;
     node.size_spec = opsize;
     if (dir_to_addr) {
-        node.arg1 = Arg::FromAddrModeArg(reg);
-        node.arg2 = Arg::FromAddrModeArg(addr);
+        node.arg1 = reg;
+        node.arg2 = addr;
     } else {
-        node.arg1 = Arg::FromAddrModeArg(addr);
-        node.arg2 = Arg::FromAddrModeArg(reg);
+        node.arg1 = addr;
+        node.arg2 = reg;
     }
-    return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+    return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
 
 static size_t disasm_cmpm(DisasmNode &node, const uint16_t instr)
@@ -1350,19 +1361,19 @@ static size_t disasm_cmpm(DisasmNode &node, const uint16_t instr)
     (void) m;
     const int xn = instr & 7;
     const int xi = (instr >> 9) & 7;
-    const auto src = AddrModeArg::AnAddrIncr(xn);
-    const auto dst = AddrModeArg::AnAddrIncr(xi);
+    const auto src = Arg::AnAddrIncr(xn);
+    const auto dst = Arg::AnAddrIncr(xi);
     node.opcode = OpCode::kCMPM;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
-    const auto addr = FetchAddrModeArg(
+    const auto addr = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
@@ -1385,12 +1396,12 @@ static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataBuffe
         // PC relative and immediate cannot be destination
         return disasm_verbatim(node, instr);
     }
-    const auto reg = AddrModeArg::Dn((instr >> 9) & 7);
+    const auto reg = Arg::Dn((instr >> 9) & 7);
     node.opcode = OpCode::kEOR;
     node.size_spec = opsize;
-    node.arg1 = Arg::FromAddrModeArg(reg);
-    node.arg2 = Arg::FromAddrModeArg(addr);
-    return node.size = kInstructionSizeStepBytes + addr.Size() + reg.Size();
+    node.arg1 = reg;
+    node.arg2 = addr;
+    return node.size = kInstructionSizeStepBytes + addr.Size(opsize) + reg.Size(opsize);
 }
 
 static size_t disasm_eor_cmpm_cmp_cmpa(
@@ -1422,13 +1433,14 @@ static inline size_t disasm_exg(DisasmNode &node, const uint16_t instr)
     assert(m != 4); // Only m == 2, m == 3 and m == 5 values are allowed
     const int xn = instr & 7;
     const int xi = (instr >> 9) & 7;
-    const auto src = (m == 3) ? AddrModeArg::An(xi) : AddrModeArg::Dn(xi);
-    const auto dst = (m == 2) ? AddrModeArg::Dn(xn) : AddrModeArg::An(xn);
+    const auto src = (m == 3) ? Arg::An(xi) : Arg::Dn(xi);
+    const auto dst = (m == 2) ? Arg::Dn(xn) : Arg::An(xn);
+    const auto opsize = OpSize::kNone;
     node.opcode = OpCode::kEXG;
-    node.size_spec = OpSize::kNone;
-    node.arg1 = Arg::FromAddrModeArg(src);
-    node.arg2 = Arg::FromAddrModeArg(dst);
-    return node.size = kInstructionSizeStepBytes + src.Size() + dst.Size();
+    node.size_spec = opsize;
+    node.arg1 = src;
+    node.arg2 = dst;
+    return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_chunk_c(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
@@ -1497,8 +1509,8 @@ static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const 
         return disasm_verbatim(node, instr);
     }
     const auto dst = (opsize == OpSize::kInvalid)
-        ? FetchAddrModeArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize)
-        : AddrModeArg::Dn(xn);
+        ? FetchArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize)
+        : Arg::Dn(xn);
     if (opsize == OpSize::kInvalid) {
         switch (dst.mode) {
         case AddrMode::kInvalid:
@@ -1530,13 +1542,13 @@ static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const 
     node.opcode = ShiftKindToOpcode(kind, dir);
     node.size_spec = opsize;
     if (opsize == OpSize::kInvalid) {
-        node.arg1 = Arg::FromAddrModeArg(dst);
+        node.arg1 = dst;
     } else {
         const unsigned m = (instr >> 5) & 1;
         node.arg1 = m ? Arg::AddrModeXn(ArgType::kDn, src) : Arg::Immediate(imm);
-        node.arg2 = Arg::FromAddrModeArg(dst);
+        node.arg2 = dst;
     }
-    return node.size = kInstructionSizeStepBytes + dst.Size();
+    return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
 }
 
 static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c)
@@ -1759,34 +1771,19 @@ static int OpcodeSNPrintf(
     return snprintf(buf, bufsz, "%s%s", ToString(opcode, condition), ToString(size_spec));
 }
 
-static char RegChar(RegKind k)
+static char RegChar(const uint8_t xi)
 {
-    switch (k) {
-    case RegKind::kDnWord:
-    case RegKind::kDnLong:
-        return 'd';
-    case RegKind::kAnWord:
-    case RegKind::kAnLong:
-        return 'a';
-    }
-    assert(false);
-    return 'd';
+    return (xi & 0x08) ? 'a' : 'd';
 }
 
-static char SizeSpecChar(RegKind k)
+static char SizeSpecChar(const uint8_t xi)
 {
-    switch (k) {
-    case RegKind::kDnWord:
-        return 'w';
-    case RegKind::kDnLong:
-        return 'l';
-    case RegKind::kAnWord:
-        return 'w';
-    case RegKind::kAnLong:
-        return 'l';
-    }
-    assert(false);
-    return 'w';
+    return (xi & 0x10) ? 'l' : 'w';
+}
+
+static unsigned RegNum(const uint8_t xi)
+{
+    return xi & 0x7;
 }
 
 static inline size_t snprint_reg_mask(
@@ -1843,12 +1840,12 @@ int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
         return snprintf(buf, bufsz, "%%a%u@(%d:w)", d16_an.an, d16_an.d16);
     case ArgType::kD8AnXiAddr:
         return snprintf(
-                buf, bufsz, "%%a%u@(%d,%%%c%d:%c)",
+                buf, bufsz, "%%a%u@(%d,%%%c%u:%c)",
                 d8_an_xi.an,
                 d8_an_xi.d8,
-                RegChar(d8_an_xi.kind),
-                d8_an_xi.xi,
-                SizeSpecChar(d8_an_xi.kind));
+                RegChar(d8_an_xi.xi),
+                RegNum(d8_an_xi.xi),
+                SizeSpecChar(d8_an_xi.xi));
     case ArgType::kWord:
         return snprintf(buf, bufsz, "0x%x:w", lword);
     case ArgType::kLong:
@@ -1857,11 +1854,11 @@ int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
         return snprintf(buf, bufsz, "%%pc@(%d:w)", d16_pc.d16);
     case ArgType::kD8PCXiAddr:
         return snprintf(
-                buf, bufsz, "%%pc@(%d,%%%c%d:%c)",
+                buf, bufsz, "%%pc@(%d,%%%c%u:%c)",
                 d8_pc_xi.d8,
-                RegChar(d8_pc_xi.kind),
-                d8_pc_xi.xi,
-                SizeSpecChar(d8_pc_xi.kind));
+                RegChar(d8_pc_xi.xi),
+                RegNum(d8_pc_xi.xi),
+                SizeSpecChar(d8_pc_xi.xi));
     case ArgType::kImmediate:
         return snprintf(buf, bufsz, "#%d", lword);
     case ArgType::kRegMask:
