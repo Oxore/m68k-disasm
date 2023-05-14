@@ -369,5 +369,4 @@ struct DisasmNode {
     size_t Disasm(const DataBuffer &code);
     void AddReferencedBy(uint32_t offset, ReferenceType);
     ~DisasmNode();
-private:
 };

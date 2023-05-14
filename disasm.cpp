@@ -1697,7 +1697,7 @@ static unsigned RegNum(const uint8_t xi)
 }
 
 static size_t snprint_reg_mask(
-        char *const buf, const size_t bufsz, const uint32_t regmask_arg, const bool predecrement)
+        char *const buf, const size_t bufsz, const uint32_t regmask_arg, const ArgType arg_type)
 {
     const uint32_t regmask = regmask_arg & 0xffff;
     size_t written = 0;
@@ -1705,7 +1705,7 @@ static size_t snprint_reg_mask(
     size_t span = 0;
     // 17-th bit used to close the span with 0 value unconditionaly
     for (int i = 0; i < 17; i++) {
-        const uint32_t mask = 1 << (predecrement ? (15 - i) : i);
+        const uint32_t mask = 1 << (arg_type == ArgType::kRegMaskPredecrement ? (15 - i) : i);
         const bool hit = regmask & mask;
         const bool span_open = hit && span == 0;
         const bool span_closed = !hit && span > 1;
@@ -1772,9 +1772,8 @@ int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
     case ArgType::kImmediate:
         return snprintf(buf, bufsz, "#%d", lword);
     case ArgType::kRegMask:
-        return snprint_reg_mask(buf, bufsz, uword, false);
     case ArgType::kRegMaskPredecrement:
-        return snprint_reg_mask(buf, bufsz, uword, true);
+        return snprint_reg_mask(buf, bufsz, uword, type);
     case ArgType::kDisplacement:
         return snprintf(buf, bufsz,  ".%s%d", lword >= 0 ? "+" : "", lword);
     case ArgType::kCCR:
