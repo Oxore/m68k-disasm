@@ -294,7 +294,12 @@ struct Arg {
         a.uword = instr;
         return a;
     }
-    int SNPrint(char *buf, size_t bufsz, const Settings&) const;
+    int SNPrint(
+            char *buf,
+            size_t bufsz,
+            bool has_relocation = false,
+            uint32_t self_addr = 0,
+            uint32_t reloc_addr = 0) const;
 };
 
 enum class TracedNodeType {
@@ -343,7 +348,11 @@ struct Op {
     {
         return Op::Typical(OpCode::kRaw, OpSize::kNone, Arg::Raw(instr));
     }
-    int FPrint(FILE*, const Settings&) const;
+    int FPrint(
+            FILE *,
+            bool has_relocation = false,
+            uint32_t self_addr = 0,
+            uint32_t reloc_addr = 0) const;
 };
 
 struct DisasmNode {
@@ -367,6 +376,7 @@ struct DisasmNode {
      * returns size of whole instruction with arguments in bytes
      */
     size_t Disasm(const DataBuffer &code);
+    size_t DisasmAsRaw(const DataBuffer &code);
     void AddReferencedBy(uint32_t offset, ReferenceType);
     ~DisasmNode();
 };

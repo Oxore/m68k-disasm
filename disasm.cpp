@@ -182,7 +182,6 @@ static size_t disasm_jsr_jmp(
         break;
     case AddrMode::kWord: // 4eb8 / 4ef8
         {
-            // FIXME support s.abs_marks option for this instruction
             const uint32_t branch_addr = static_cast<uint32_t>(a.lword);
             node.branch_addr = branch_addr;
             node.has_branch_addr = true;
@@ -190,7 +189,6 @@ static size_t disasm_jsr_jmp(
         break;
     case AddrMode::kLong: // 4eb9 / 4ef9
         {
-            // FIXME support s.abs_marks option for this instruction
             const uint32_t branch_addr = static_cast<uint32_t>(a.lword);
             node.branch_addr = branch_addr;
             node.has_branch_addr = true;
@@ -198,8 +196,8 @@ static size_t disasm_jsr_jmp(
         break;
     case AddrMode::kD16PCAddr: // 4eba / 4efa
         {
-            // FIXME support s.abs_marks option for this instruction
-            const uint32_t branch_addr = static_cast<uint32_t>(a.lword) + kInstructionSizeStepBytes;
+            const uint32_t branch_addr = node.offset + kInstructionSizeStepBytes +
+                static_cast<uint32_t>(a.d16_pc.d16);
             node.branch_addr = branch_addr;
             node.has_branch_addr = true;
         }
@@ -379,7 +377,6 @@ static size_t disasm_bra_bsr_bcc(
     node.branch_addr = branch_addr;
     node.has_branch_addr = true;
     node.op = Op{OpCode::kBcc, opsize, condition, Arg::Displacement(dispmt)};
-    // FIXME support s.rel_marks option for this instruction
     return node.size;
 }
 
@@ -1008,7 +1005,6 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuff
         Arg::AddrModeXn(ArgType::kDn, (instr & 7)),
         Arg::Displacement(dispmt),
     };
-    // FIXME support s.rel_marks option for this instruction
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
@@ -1506,8 +1502,24 @@ size_t DisasmNode::Disasm(const DataBuffer &code)
     if (this->op.opcode != OpCode::kNone) {
         return this->size;
     }
+    size = kInstructionSizeStepBytes;
+    has_branch_addr = false;
+    branch_addr = 0;
+    is_call = false;
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
     return m68k_disasm(*this, instr, code);
+}
+
+size_t DisasmNode::DisasmAsRaw(const DataBuffer &code)
+{
+    // We assume that machine have no MMU and ROM data always starts with 0
+    assert(this->offset < code.occupied_size);
+    size = kInstructionSizeStepBytes;
+    has_branch_addr = false;
+    branch_addr = 0;
+    is_call = false;
+    const uint16_t instr = GetU16BE(code.buffer + this->offset);
+    return disasm_verbatim(*this, instr);
 }
 
 static const char *ToString(const OpCode opcode, const Condition condition)
@@ -1724,7 +1736,12 @@ static size_t snprint_reg_mask(
     return written;
 }
 
-int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
+int Arg::SNPrint(
+            char *const buf,
+            const size_t bufsz,
+            const bool has_relocation,
+            const uint32_t self_addr,
+            const uint32_t reloc_addr) const
 {
     switch (type) {
     case ArgType::kNone:
@@ -1753,11 +1770,32 @@ int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
                 RegNum(d8_an_xi.xi),
                 SizeSpecChar(d8_an_xi.xi));
     case ArgType::kWord:
-        return snprintf(buf, bufsz, "0x%x:w", lword);
     case ArgType::kLong:
-        return snprintf(buf, bufsz, "0x%x:l", lword);
+        {
+            const char c = type == ArgType::kLong ? 'l' : 'w';
+            if (has_relocation) {
+                if (static_cast<uint32_t>(lword) == reloc_addr) {
+                    return snprintf(buf, bufsz, ".L%08x:%c", reloc_addr, c);
+                } else {
+                    // It has to be AFTER the mark we are gonna reference here
+                    assert(static_cast<uint32_t>(lword) > reloc_addr);
+                    return snprintf(buf, bufsz, ".L%08x+%d:%c", reloc_addr, lword - reloc_addr, c);
+                }
+            } else {
+                return snprintf(buf, bufsz, "0x%x:%c", lword, c);
+            }
+        }
     case ArgType::kD16PCAddr:
-        return snprintf(buf, bufsz, "%%pc@(%d:w)", d16_pc.d16);
+        if (has_relocation) {
+            if (static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) == reloc_addr) {
+                return snprintf(buf, bufsz, "%%pc@(.L%08x:w)", reloc_addr);
+            } else {
+                assert(static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) > reloc_addr);
+                return snprintf(buf, bufsz,  "%%pc@(.L%08x+%d:w)", reloc_addr, static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) - reloc_addr);
+            }
+        } else {
+            return snprintf(buf, bufsz, "%%pc@(%d:w)", d16_pc.d16);
+        }
     case ArgType::kD8PCXiAddr:
         return snprintf(
                 buf, bufsz, "%%pc@(%d,%%%c%u:%c)",
@@ -1771,7 +1809,16 @@ int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
     case ArgType::kRegMaskPredecrement:
         return snprint_reg_mask(buf, bufsz, uword, type);
     case ArgType::kDisplacement:
-        return snprintf(buf, bufsz,  ".%s%d", lword >= 0 ? "+" : "", lword);
+        if (has_relocation) {
+            if (static_cast<uint32_t>(self_addr + lword) == reloc_addr) {
+                return snprintf(buf, bufsz,  ".L%08x", reloc_addr);
+            } else {
+                assert(static_cast<uint32_t>(self_addr + lword) > reloc_addr);
+                return snprintf(buf, bufsz,  ".L%08x+%d", reloc_addr, (self_addr + lword) - reloc_addr);
+            }
+        } else {
+            return snprintf(buf, bufsz,  ".%s%d", lword >= 0 ? "+" : "", lword);
+        }
     case ArgType::kCCR:
         return snprintf(buf, bufsz,  "%%ccr");
     case ArgType::kSR:
@@ -1783,17 +1830,21 @@ int Arg::SNPrint(char *const buf, const size_t bufsz, const Settings &) const
     return -1;
 }
 
-int Op::FPrint(FILE* const stream, const Settings &settings) const
+int Op::FPrint(
+        FILE *const stream,
+        const bool has_relocation,
+        const uint32_t self_addr,
+        const uint32_t reloc_addr) const
 {
     assert(opcode != OpCode::kNone);
     char mnemonic_str[kMnemonicBufferSize]{};
     OpcodeSNPrintf(mnemonic_str, kMnemonicBufferSize, opcode, condition, size_spec);
     if (arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
-        arg1.SNPrint(arg1_str, kArgsBufferSize, settings);
+        arg1.SNPrint(arg1_str, kArgsBufferSize, has_relocation, self_addr, reloc_addr);
         if (arg2.type != ArgType::kNone) {
             char arg2_str[kArgsBufferSize]{};
-            arg2.SNPrint(arg2_str, kArgsBufferSize, settings);
+            arg2.SNPrint(arg2_str, kArgsBufferSize, has_relocation, self_addr, reloc_addr);
             return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
         } else {
             return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);
