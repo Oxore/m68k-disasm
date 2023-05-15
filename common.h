@@ -12,6 +12,8 @@ struct Settings {
     bool raw_data_comment{};
 };
 
+constexpr unsigned kRelocRelMask = 1;
+constexpr unsigned kRelocAbsMask = 2;
 constexpr size_t kInstructionSizeStepBytes = 2;
 constexpr size_t kRomSizeBytes = 4 * 1024 * 1024;
 constexpr size_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStepBytes;

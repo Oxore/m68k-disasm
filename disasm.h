@@ -297,7 +297,7 @@ struct Arg {
     int SNPrint(
             char *buf,
             size_t bufsz,
-            bool has_relocation = false,
+            unsigned relocation = 0,
             uint32_t self_addr = 0,
             uint32_t reloc_addr = 0) const;
 };
@@ -350,7 +350,7 @@ struct Op {
     }
     int FPrint(
             FILE *,
-            bool has_relocation = false,
+            unsigned relocation = 0,
             uint32_t self_addr = 0,
             uint32_t reloc_addr = 0) const;
 };
@@ -361,10 +361,10 @@ struct DisasmNode {
     const uint32_t offset{};
     /// Instruction size in bytes
     size_t size{kInstructionSizeStepBytes};
-    /// Indicates whether `branch_addr` should be interpreted
-    bool has_branch_addr{};
+    /// Indicates whether `reloc_addr` should be interpreted and how
+    bool has_relocation{};
     /// Absolute address of where to branch to
-    uint32_t branch_addr{};
+    uint32_t reloc_addr{};
     /// Indicates whether instruction is a call (BSR, JSR) or just a branch
     /// (Bcc, JMP) if `has_branch_addr` is set
     bool is_call{};

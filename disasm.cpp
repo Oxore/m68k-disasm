@@ -166,44 +166,44 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kAn: // 4e88..4e8f / 4ec8..4ecf
         return disasm_verbatim(node, instr);
     case AddrMode::kAnAddr: // 4e90..4e97 / 4ed0..4ed7
-        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // NOTE: dynamic jump, reloc_addr may possibly be obtained during the
         // trace
         break;
     case AddrMode::kAnAddrIncr: // 4e98..4e9f / 4ed8..4edf
     case AddrMode::kAnAddrDecr: // 4ea0..4ea7 / 4ee0..4ee7
         return disasm_verbatim(node, instr);
     case AddrMode::kD16AnAddr: // 4ea8..4eaf / 4ee8..4eef
-        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // NOTE: dynamic jump, reloc_addr may possibly be obtained during the
         // trace
         break;
     case AddrMode::kD8AnXiAddr: // 4eb0..4eb7 / 4ef0..4ef7
-        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // NOTE: dynamic jump, reloc_addr may possibly be obtained during the
         // trace
         break;
     case AddrMode::kWord: // 4eb8 / 4ef8
         {
-            const uint32_t branch_addr = static_cast<uint32_t>(a.lword);
-            node.branch_addr = branch_addr;
-            node.has_branch_addr = true;
+            const uint32_t reloc_addr = static_cast<uint32_t>(a.lword);
+            node.reloc_addr = reloc_addr;
+            node.has_relocation = true;
         }
         break;
     case AddrMode::kLong: // 4eb9 / 4ef9
         {
-            const uint32_t branch_addr = static_cast<uint32_t>(a.lword);
-            node.branch_addr = branch_addr;
-            node.has_branch_addr = true;
+            const uint32_t reloc_addr = static_cast<uint32_t>(a.lword);
+            node.reloc_addr = reloc_addr;
+            node.has_relocation = true;
         }
         break;
     case AddrMode::kD16PCAddr: // 4eba / 4efa
         {
-            const uint32_t branch_addr = node.offset + kInstructionSizeStepBytes +
+            const uint32_t reloc_addr = node.offset + kInstructionSizeStepBytes +
                 static_cast<uint32_t>(a.d16_pc.d16);
-            node.branch_addr = branch_addr;
-            node.has_branch_addr = true;
+            node.reloc_addr = reloc_addr;
+            node.has_relocation = true;
         }
         break;
     case AddrMode::kD8PCXiAddr: // 4ebb / 4efb
-        // NOTE: dynamic jump, branch_addr may possibly be obtained during the
+        // NOTE: dynamic jump, reloc_addr may possibly be obtained during the
         // trace
         break;
     case AddrMode::kImmediate: // 4ebc / 4efc
@@ -370,12 +370,12 @@ static size_t disasm_bra_bsr_bcc(
     }
     const int16_t dispmt = kInstructionSizeStepBytes + (dispmt0
         ? dispmt0 : GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes));
-    const uint32_t branch_addr = static_cast<uint32_t>(node.offset + dispmt);
+    const uint32_t reloc_addr = static_cast<uint32_t>(node.offset + dispmt);
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     // False condition Indicates BSR
     node.is_call = (condition == Condition::kF);
-    node.branch_addr = branch_addr;
-    node.has_branch_addr = true;
+    node.reloc_addr = reloc_addr;
+    node.has_relocation = true;
     node.op = Op{OpCode::kBcc, opsize, condition, Arg::Displacement(dispmt)};
     return node.size;
 }
@@ -996,8 +996,8 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuff
     }
     const int16_t dispmt_raw = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
     const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
-    node.branch_addr = static_cast<uint32_t>(node.offset + dispmt);
-    node.has_branch_addr = true;
+    node.reloc_addr = static_cast<uint32_t>(node.offset + dispmt);
+    node.has_relocation = true;
     node.op = Op{
         OpCode::kDBcc,
         OpSize::kNone,
@@ -1503,8 +1503,8 @@ size_t DisasmNode::Disasm(const DataBuffer &code)
         return this->size;
     }
     size = kInstructionSizeStepBytes;
-    has_branch_addr = false;
-    branch_addr = 0;
+    has_relocation = 0;
+    reloc_addr = 0;
     is_call = false;
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
     return m68k_disasm(*this, instr, code);
@@ -1515,8 +1515,8 @@ size_t DisasmNode::DisasmAsRaw(const DataBuffer &code)
     // We assume that machine have no MMU and ROM data always starts with 0
     assert(this->offset < code.occupied_size);
     size = kInstructionSizeStepBytes;
-    has_branch_addr = false;
-    branch_addr = 0;
+    has_relocation = 0;
+    reloc_addr = 0;
     is_call = false;
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
     return disasm_verbatim(*this, instr);
@@ -1739,7 +1739,7 @@ static size_t snprint_reg_mask(
 int Arg::SNPrint(
             char *const buf,
             const size_t bufsz,
-            const bool has_relocation,
+            const unsigned relocation,
             const uint32_t self_addr,
             const uint32_t reloc_addr) const
 {
@@ -1773,7 +1773,7 @@ int Arg::SNPrint(
     case ArgType::kLong:
         {
             const char c = type == ArgType::kLong ? 'l' : 'w';
-            if (has_relocation) {
+            if (relocation & kRelocAbsMask) {
                 if (static_cast<uint32_t>(lword) == reloc_addr) {
                     return snprintf(buf, bufsz, ".L%08x:%c", reloc_addr, c);
                 } else {
@@ -1786,7 +1786,7 @@ int Arg::SNPrint(
             }
         }
     case ArgType::kD16PCAddr:
-        if (has_relocation) {
+        if (relocation & kRelocRelMask) {
             if (static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) == reloc_addr) {
                 return snprintf(buf, bufsz, "%%pc@(.L%08x:w)", reloc_addr);
             } else {
@@ -1809,7 +1809,7 @@ int Arg::SNPrint(
     case ArgType::kRegMaskPredecrement:
         return snprint_reg_mask(buf, bufsz, uword, type);
     case ArgType::kDisplacement:
-        if (has_relocation) {
+        if (relocation & kRelocRelMask) {
             if (static_cast<uint32_t>(self_addr + lword) == reloc_addr) {
                 return snprintf(buf, bufsz,  ".L%08x", reloc_addr);
             } else {
@@ -1832,7 +1832,7 @@ int Arg::SNPrint(
 
 int Op::FPrint(
         FILE *const stream,
-        const bool has_relocation,
+        const unsigned relocation,
         const uint32_t self_addr,
         const uint32_t reloc_addr) const
 {
@@ -1841,10 +1841,10 @@ int Op::FPrint(
     OpcodeSNPrintf(mnemonic_str, kMnemonicBufferSize, opcode, condition, size_spec);
     if (arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
-        arg1.SNPrint(arg1_str, kArgsBufferSize, has_relocation, self_addr, reloc_addr);
+        arg1.SNPrint(arg1_str, kArgsBufferSize, relocation, self_addr, reloc_addr);
         if (arg2.type != ArgType::kNone) {
             char arg2_str[kArgsBufferSize]{};
-            arg2.SNPrint(arg2_str, kArgsBufferSize, has_relocation, self_addr, reloc_addr);
+            arg2.SNPrint(arg2_str, kArgsBufferSize, relocation, self_addr, reloc_addr);
             return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
         } else {
             return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);
