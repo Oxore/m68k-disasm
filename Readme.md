@@ -41,6 +41,18 @@ What is **not** the goal (at least not in this repo):
 - Other instruction set architectures support like MIPS, x86, amd64, ARM,
   PowerPC and so on.
 
+## Current limitations
+
+- Motorola 68000 only supported. That means no 68010 support or any 680x0,
+  except 68000. No ColdFire support.
+- Code must be aligned to 2 bytes boundary. All PC trace values have to be
+  dividable by 2 without remaining. That limitation has been put into design
+  from the beginning, because 68000 cannot perform unaligned `word` and `long`
+  memory access, including instruction fetch. This is not true for some of 680x0
+  variations.
+- Base address is always assumed to be `0x00000000`.
+- Maximum binary size is 4MiB.
+
 ## Build
 
 ```
