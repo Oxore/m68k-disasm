@@ -220,9 +220,15 @@ static void ParseTraceData(DisasmMap &disasm_map, const DataBuffer &trace_data)
             char *endptr = startptr;
             const long offset = strtol(startptr, &endptr, 10);
             if ((offset == LONG_MAX || offset == LONG_MIN) && errno == ERANGE) {
-                // Error, just skip
+                // Parsing error, just skip
             } else if (startptr == endptr) {
-                // Error, just skip
+                // Parsing error, just skip
+            } else if (offset % 2) {
+                fprintf(stderr, "Error: Uneven PC values are not supported (got PC=0x%08lx), exiting\n", offset);
+                exit(1);
+            } else if (static_cast<unsigned long>(offset) > kRomSizeBytes) {
+                fprintf(stderr, "Error: PC values > 4MiB are not supported (got PC=0x%08lx), exiting\n", offset);
+                exit(1);
             } else {
                 // Valid value
                 disasm_map.InsertTracedNode(offset, TracedNodeType::kInstruction);
