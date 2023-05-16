@@ -1,0 +1,81 @@
+  Mnemonic        Dest op addr mode mask    Src op addr mode mask
++ ORI to CCR      NA                        NA
++ ORI to SR       NA                        NA
++ ORI             1011_1111_1000            NA
++ ANDI to CCR     NA                        NA
++ ANDI to SR      NA                        NA
++ ANDI            1011_1111_1000            NA
++ SUBI            1011_1111_1000            NA
++ ADDI            1011_1111_1000            NA
++ EORI to CCR     NA                        NA
++ EORI to SR      NA                        NA
++ EORI            1011_1111_1000            NA
++ CMPI            1011_1111_1110            NA
++ BTST            1011_1111_1110            NA
++ BCHG            1011_1111_1000            NA
++ BCLR            1011_1111_1000            NA
++ BSET            1011_1111_1000            NA
++ MOVEP           NA                        NA
++ MOVEA           1111_1111_1111            NA
++ MOVE            1011_1111_1000            1111_1111_1111
+* MOVE from SR    1011_1111_1000            NA
+* MOVE to CCR     NA                        1011_1111_1111
+* MOVE to SR      NA                        1011_1111_1111
++ NEGX            1011_1111_1000            NA
++ CLR             NA                        1011_1111_1000
++ NEG             1011_1111_1000            NA
++ NOT             NA                        1011_1111_1000
++ EXT             NA                        NA
++ NBCD            1011_1111_1000            NA
++ SWAP            NA                        NA
++ PEA             NA                        0010_0111_1110
++ ILLEGAL         NA                        NA
++ TAS             NA                        1011_1111_1000
++ TST             NA                        1011_1111_1110
++ TRAP            NA                        NA
++ LINK            NA                        NA
++ UNLK            NA                        NA
++ MOVE USP        NA                        NA
++ RESET           NA                        NA
++ NOP             NA                        NA
++ STOP            NA                        NA
++ RTE             NA                        NA
++ RTS             NA                        NA
++ TRAPV           NA                        NA
++ RTR             NA                        NA
++ JSR             NA                        0010_0111_1110
++ JMP             NA                        0010_0111_1110
++ MOVEM           0010_1111_1000            0011_0111_1110
++ LEA             NA                        0010_0111_1110
++ CHK             NA                        1011_1111_1000
++ ADDQ            1111_1111_1000            NA
++ SUBQ            1111_1111_1000            NA
++ Scc             1011_1111_1000            NA
++ DBcc            NA                        NA
++ BRA             NA                        NA
++ BSR             NA                        NA
++ Bcc             NA                        NA
++ MOVEQ           NA                        NA
++ DIVU            NA                        1011_1111_1111
++ DIVS            NA                        1011_1111_1111
++ SBCD            NA                        NA
++ OR              1011_1111_1000            1011_1111_1111
++ SUB             1011_1111_1000            1111_1111_1111
++ SUBX            1000_1000_0000            1000_1000_0000
++ SUBA            0100_0000_0000            1111_1111_1111
++ EOR             1011_1111_1000            1000_0000_0000
++ CMPM            0001_0000_0000            0001_0000_0000
++ CMP             1000_0000_0000            1111_1111_1111
++ CMPA            0100_0000_0000            1111_1111_1111
++ MULU            NA                        1011_1111_1111
++ MULS            NA                        1011_1111_1111
++ ABCD            NA                        NA
++ EXG             NA                        NA
++ AND             1011_1111_1000            1011_1111_1111
++ ADD             1011_1111_1000            1111_1111_1111
++ ADDX            1000_1000_0000            1000_1000_0000
++ ADDA            0100_0000_0000            1111_1111_1111
++ ASd             1011_1111_1000            NA
++ LSd             1011_1111_1000            NA
++ ROXd            1011_1111_1000            NA
++ ROd             1011_1111_1000            NA

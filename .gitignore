@@ -4,7 +4,6 @@
 *.asm
 *.S
 *.out
-*.txt
 *.trace
 *.log
 prof_output
