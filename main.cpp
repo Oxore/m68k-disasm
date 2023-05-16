@@ -107,9 +107,9 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
             node->DisasmAsRaw(code);
         }
         // FIXME implement deep graph walk for DisasmMapType::kTraced case
-        if (node->has_relocation && node->reloc_addr < code.occupied_size) {
+        if (node->has_ref && node->ref_addr < code.occupied_size) {
             auto *const ref_node = insertTracedNode(
-                    node->reloc_addr, TracedNodeType::kInstruction);
+                    node->ref_addr, TracedNodeType::kInstruction);
             const auto size = ref_node->Disasm(code);
             assert(size >= kInstructionSizeStepBytes);
             if (canBeAllocated(*ref_node)) {
@@ -225,22 +225,22 @@ static void RenderDisassembly(
                 }
                 fprintf(output, "\n");
             } else {
-                const bool with_relocation = node->has_relocation && s.marks &&
+                const bool with_reference = node->has_ref && s.marks &&
                     (s.abs_marks || s.rel_marks);
-                const auto *referenced = disasm_map.FindNodeByOffset(node->reloc_addr);
-                if (with_relocation && referenced) {
+                const auto *referenced = disasm_map.FindNodeByOffset(node->ref_addr);
+                if (with_reference && referenced) {
                     const uint32_t ref_addr = referenced->offset;
-                    const unsigned relocation = ((s.abs_marks ? kRelocAbsMask : 0) |
+                    const unsigned ref_kinds = ((s.abs_marks ? kRelocAbsMask : 0) |
                         (s.rel_marks ? kRelocRelMask : 0));
-                    node->op.FPrint(output, relocation, node->offset, ref_addr);
+                    node->op.FPrint(output, ref_kinds, node->offset, ref_addr);
                 } else {
                     node->op.FPrint(output);
                 }
             }
-            if (node->has_relocation && s.xrefs_to) {
-                char reloc_addr_str[12]{};
-                snprintf(reloc_addr_str, sizeof(reloc_addr_str), " .L%08x", node->reloc_addr);
-                fprintf(output, " |%s", reloc_addr_str);
+            if (node->has_ref && s.xrefs_to) {
+                char ref_addr_str[12]{};
+                snprintf(ref_addr_str, sizeof(ref_addr_str), " .L%08x", node->ref_addr);
+                fprintf(output, " |%s", ref_addr_str);
             }
             if (s.raw_data_comment) {
                 char raw_data_comment[100]{};

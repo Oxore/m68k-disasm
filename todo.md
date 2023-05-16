@@ -1,6 +1,6 @@
 # TODO
 
-- Add tests for relocations with all supported addressing modes.
+- Add tests for references of marks with all supported addressing modes.
 - Implement CLI option that can be used to specify regions of RAM and IO
   registers. Custom ROM location and size is still not the case, only 4MiB at
   the base `0x00000000` is supported and it remains.
