@@ -328,11 +328,11 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
         fprintf(stderr, "ReadFromStream(code, input_stream): Error: No data has been read\n");
         return EXIT_FAILURE;
     }
-    // Expand a little just in case there is truncated instruction in the end of
-    // the buffer so it will not fall out of buffer trying to fetch arguments
-    // from additional extension words.
-    if (code.occupied_size + 100 > code.buffer_size) {
-        code.Expand(code.occupied_size + 100);
+    // It just not worth it to check this somewhere while disassebling or
+    // emitting. Odd size is just not supported.
+    if (code.occupied_size % 2) {
+        fprintf(stderr, "Error: code blob must be of even size\n");
+        return EXIT_FAILURE;
     }
     // Read trace file into buffer
     DataBuffer trace_data{};
@@ -362,11 +362,11 @@ static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings
         fprintf(stderr, "ReadFromStream(code, input_stream): Error: No data has been read\n");
         return EXIT_FAILURE;
     }
-    // Expand a little just in case there is truncated instruction in the end of
-    // the buffer so it will not fall out of buffer trying to fetch arguments
-    // from additional extension words.
-    if (code.occupied_size + 100 > code.buffer_size) {
-        code.Expand(code.occupied_size + 100);
+    // It just not worth it to check this somewhere while disassebling or
+    // emitting. Odd size is just not supported.
+    if (code.occupied_size % 2) {
+        fprintf(stderr, "Error: code blob must be of even size\n");
+        return EXIT_FAILURE;
     }
     // Create the map and disasseble
     DisasmMap *disasm_map = new DisasmMap{DisasmMapType::kRaw};
