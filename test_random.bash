@@ -46,10 +46,18 @@ run_test_random() {
   fi
 }
 
+# Tiny tests are mostly for ensuring that bounds checking is working properly,
+# because it is more likely to encounter something that looks like a truncated
+# instruction.
+#
+# If there is an obvious bug, then it will most likely be detected
+# here and it is easier to dissect tiny test blob than huge test trying to debug
+# single test case.
 for i in `seq 1 1000`; do
   run_test_random tiny$i 1
 done
 
+# Huge tests are for the broad coverage. They catch a lot!
 for i in `seq 1 10`; do
   run_test_random huge$i 1024
 done

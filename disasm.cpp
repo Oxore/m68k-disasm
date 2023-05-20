@@ -927,13 +927,21 @@ static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const
         break;
     case AddrMode::kD16AnAddr:
     case AddrMode::kD8AnXiAddr:
+        break;
     case AddrMode::kWord:
     case AddrMode::kLong:
+        node.ref1_addr = static_cast<uint32_t>(arg.lword);
+        node.ref_kinds = kRef1AbsMask | kRef1ReadMask;
         break;
     case AddrMode::kD16PCAddr:
     case AddrMode::kD8PCXiAddr:
         if (is_nbcd) {
             return disasm_verbatim(node, instr);
+        }
+        if (arg.mode == AddrMode::kD16PCAddr) {
+            node.ref1_addr = node.offset + kInstructionSizeStepBytes +
+                static_cast<uint32_t>(arg.d16_pc.d16);
+            node.ref_kinds = kRef1RelMask | kRef1ReadMask;
         }
         break;
     case AddrMode::kImmediate:
