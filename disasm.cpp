@@ -1769,7 +1769,7 @@ int Arg::SNPrint(
     case ArgType::kLong:
         {
             const char c = type == ArgType::kLong ? 'l' : 'w';
-            if (ref_kinds & kRelocAbsMask) {
+            if (ref_kinds & kRefAbsMask) {
                 if (static_cast<uint32_t>(lword) == ref_addr) {
                     return snprintf(buf, bufsz, ".L%08x:%c", ref_addr, c);
                 } else {
@@ -1782,7 +1782,7 @@ int Arg::SNPrint(
             }
         }
     case ArgType::kD16PCAddr:
-        if (ref_kinds & kRelocRelMask) {
+        if (ref_kinds & kRefRelMask) {
             if (static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) == ref_addr) {
                 return snprintf(buf, bufsz, "%%pc@(.L%08x:w)", ref_addr);
             } else {
@@ -1805,7 +1805,7 @@ int Arg::SNPrint(
     case ArgType::kRegMaskPredecrement:
         return snprint_reg_mask(buf, bufsz, uword, type);
     case ArgType::kDisplacement:
-        if (ref_kinds & kRelocRelMask) {
+        if (ref_kinds & kRefRelMask) {
             if (static_cast<uint32_t>(self_addr + lword) == ref_addr) {
                 return snprintf(buf, bufsz,  ".L%08x", ref_addr);
             } else {

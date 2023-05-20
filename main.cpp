@@ -230,8 +230,8 @@ static void RenderDisassembly(
                 const auto *referenced = disasm_map.FindNodeByOffset(node->ref_addr);
                 if (with_reference && referenced) {
                     const uint32_t ref_addr = referenced->offset;
-                    const unsigned ref_kinds = ((s.abs_marks ? kRelocAbsMask : 0) |
-                        (s.rel_marks ? kRelocRelMask : 0));
+                    const unsigned ref_kinds = ((s.abs_marks ? kRefAbsMask : 0) |
+                        (s.rel_marks ? kRefRelMask : 0));
                     node->op.FPrint(output, ref_kinds, node->offset, ref_addr);
                 } else {
                     node->op.FPrint(output);
