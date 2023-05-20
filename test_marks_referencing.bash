@@ -62,7 +62,7 @@ run_check_rdisp() {
 }
 
 run_check_r() {
-  if grep -e "[^0-9a-zA-Z_(+][0-9]\+" ${file_asm} >/dev/null 2>&1; then
+  if grep -e "[^0-9a-zA-Z_+][0-9]\+" ${file_asm} >/dev/null 2>&1; then
     echo -e "${CRED}FAIL${CRST}: raw number or displacement emitted"
     cat ${file_asm}
     exit
@@ -74,10 +74,6 @@ run_test_rdisp() {
 }
 
 run_test_rword() {
-  run_test_r "$1" "$2" "-fmarks -fabs-marks" run_check_r
-}
-
-run_test_rlong() {
   run_test_r "$1" "$2" "-fmarks -fabs-marks" run_check_r
 }
 
@@ -100,3 +96,7 @@ run_test_rword "peal 0x0:l" "\x48\x79\x00\x00\x00\x00"
 run_test_rpcrel "peal (0,PC)" "\x48\x7a\x00\x00"
 run_test_rword "nbcd 0x0:w" "\x48\x38\x00\x00"
 run_test_rword "nbcd 0x6:l with nop" "\x48\x39\x00\x00\x00\x06\x4e\x71"
+run_test_rword "cmpl 0x4:w, D2 with nop" "\xb4\xb8\x00\x04\x4e\x71"
+run_test_rword "cmpw 0x0:l, D2" "\xb4\x79\x00\x00\x00\x00"
+run_test_rpcrel "cmpl (0,PC), D2" "\xb4\xba\x00\x00"
+run_test_rpcrel "cmpl (-2,PC), D2" "\xb4\xba\xff\xfe"
