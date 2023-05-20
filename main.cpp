@@ -256,16 +256,19 @@ static void RenderDisassembly(
                         ((s.abs_marks ? (node->ref_kinds & kRefAbsMask) : 0) |
                         (s.rel_marks ? (node->ref_kinds & kRefRelMask) : 0));
                     node->op.FPrint(output, ref_kinds, node->offset, ref1_addr, ref2_addr);
+                    if (s.xrefs_to && ref1) {
+                        char ref_addr_str[12]{};
+                        snprintf(ref_addr_str, sizeof(ref_addr_str), ".L%08x", ref1_addr);
+                        fprintf(output, " | %s", ref_addr_str);
+                    }
+                    if (s.xrefs_to && ref2) {
+                        char ref_addr_str[12]{};
+                        snprintf(ref_addr_str, sizeof(ref_addr_str), ".L%08x", ref2_addr);
+                        fprintf(output, " | %s", ref_addr_str);
+                    }
                 } else {
                     node->op.FPrint(output);
                 }
-            }
-            if (node->ref_kinds && s.xrefs_to) {
-                char ref_addr_str[12]{};
-                const uint32_t ref_addr =
-                    (node->ref_kinds & kRef1Mask) ? node->ref1_addr : node->ref2_addr;
-                snprintf(ref_addr_str, sizeof(ref_addr_str), " .L%08x", ref_addr);
-                fprintf(output, " |%s", ref_addr_str);
             }
             if (s.raw_data_comment) {
                 char raw_data_comment[100]{};
