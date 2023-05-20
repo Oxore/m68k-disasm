@@ -10,11 +10,6 @@
 #include <cstdlib>
 #include <cstring>
 
-enum class JKind {
-    kJsr,
-    kJmp,
-};
-
 enum class MoveDirection: bool {
     kRegisterToMemory = 0,
     kMemoryToRegister = 1,
@@ -156,7 +151,7 @@ static size_t disasm_verbatim(DisasmNode &node, const uint16_t instr)
 }
 
 static size_t disasm_jsr_jmp(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const JKind jtype)
+        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
 {
     const OpSize opsize = OpSize::kWord;
     const auto a = FetchArg(node.offset + kInstructionSizeStepBytes, code, instr, opsize);
@@ -209,8 +204,9 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kImmediate: // 4ebc / 4efc
         return disasm_verbatim(node, instr);
     }
-    node.is_call = (jtype == JKind::kJsr);
-    node.op = Op::Typical((jtype == JKind::kJsr) ? OpCode::kJSR : OpCode::kJMP, OpSize::kNone, a);
+    const bool is_jmp = instr & 0x40;
+    node.is_call = !is_jmp;
+    node.op = Op::Typical(is_jmp ? OpCode::kJMP : OpCode::kJSR, OpSize::kNone, a);
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
@@ -925,24 +921,24 @@ static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataB
         return disasm_link_unlink(node, instr, code);
     } else if ((instr & 0xfff0) == 0x4e60) {
         return disasm_move_usp(node, instr);
-    } else if (instr == 0x4e70) {
-        return disasm_trivial(node, OpCode::kRESET);
-    } else if (instr == 0x4e71) {
-        return disasm_trivial(node, OpCode::kNOP);
-    } else if (instr == 0x4e72) {
-        return disasm_stop(node, instr, code);
-    } else if (instr == 0x4e73) {
-        return disasm_trivial(node, OpCode::kRTE);
-    } else if (instr == 0x4e75) {
-        return disasm_trivial(node, OpCode::kRTS);
-    } else if (instr == 0x4e76) {
-        return disasm_trivial(node, OpCode::kTRAPV);
-    } else if (instr == 0x4e77) {
-        return disasm_trivial(node, OpCode::kRTR);
-    } else if ((instr & 0xffc0) == 0x4e80) {
-        return disasm_jsr_jmp(node, instr, code, JKind::kJsr);
-    } else if ((instr & 0xffc0) == 0x4ec0) {
-        return disasm_jsr_jmp(node, instr, code, JKind::kJmp);
+    } else if ((instr & 0xfff8) == 0x4e70) {
+        if (instr == 0x4e70) {
+            return disasm_trivial(node, OpCode::kRESET);
+        } else if (instr == 0x4e71) {
+            return disasm_trivial(node, OpCode::kNOP);
+        } else if (instr == 0x4e72) {
+            return disasm_stop(node, instr, code);
+        } else if (instr == 0x4e73) {
+            return disasm_trivial(node, OpCode::kRTE);
+        } else if (instr == 0x4e75) {
+            return disasm_trivial(node, OpCode::kRTS);
+        } else if (instr == 0x4e76) {
+            return disasm_trivial(node, OpCode::kTRAPV);
+        } else if (instr == 0x4e77) {
+            return disasm_trivial(node, OpCode::kRTR);
+        }
+    } else if ((instr & 0xff80) == 0x4e80) {
+        return disasm_jsr_jmp(node, instr, code);
     } else if ((instr & 0xfb80) == 0x4880) {
         return disasm_ext_movem(node, instr, code);
     } else if ((instr & 0xf1c0) == 0x41c0) {
