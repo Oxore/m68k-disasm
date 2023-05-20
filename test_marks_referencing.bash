@@ -49,7 +49,7 @@ run_test_r() {
   fi
   local run_check=$4
   $run_check
-  #cat ${file_asm}
+  echo && cat ${file_asm}
   echo -e "${CGREEN}OK${CRST}"
 }
 
@@ -89,3 +89,6 @@ run_test_rdisp "bras ." "\x60\xfe"
 run_test_rdisp "bras .-2" "\x4e\x71\x60\xfc"
 run_test_rdisp "bras .-1" "\x4e\x71\x60\xfd"
 run_test_rdisp "braw .+2" "\x4e\x71\x60\x00\x00\x00"
+run_test_rword "moveml 0x0:w,%d0" "\x4c\xf8\x00\x01\x00\x00"
+run_test_rword "moveml 0x6:w,%a0" "\x4c\xf8\x01\x00\x00\x06\x4e\x71\x4e\x71"
+run_test_rword "movemw 0x0:l,%a0" "\x4e\x71\x4e\x71\x4c\xb9\x01\x00\x00\x00\x00\x02"

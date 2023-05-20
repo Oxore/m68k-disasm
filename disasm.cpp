@@ -257,13 +257,25 @@ static size_t disasm_ext_movem(
         break;
     case AddrMode::kD16AnAddr: // 48a8..48af / 4c8a..4caf / 48e8..48ef / 4ce8..4cef
     case AddrMode::kD8AnXiAddr: // 48b0..48b7 / 4cb0..4cb7 / 48f0..48f7 / 4cf0..4cf7
+        break;
     case AddrMode::kWord: // 48b8 / 4cb8 / 48f8 / 4cf8
     case AddrMode::kLong: // 48b9 / 4cb9 / 48f9 / 4cf9
+        if (dir == MoveDirection::kRegisterToMemory) {
+            node.ref2_addr = static_cast<uint32_t>(a.lword);
+            node.ref_kinds = kRef2AbsMask | kRefWriteMask;
+        } else {
+            node.ref1_addr = static_cast<uint32_t>(a.lword);
+            node.ref_kinds = kRef1AbsMask | kRefReadMask;
+        }
         break;
     case AddrMode::kD16PCAddr: // 48ba / 4cba / 48fa / 4cfa
     case AddrMode::kD8PCXiAddr: // 48bb / 4cbb / 48fb / 4cfb
         if (dir == MoveDirection::kRegisterToMemory) {
             return disasm_verbatim(node, instr);
+        } else if (a.mode == AddrMode::kD16PCAddr) {
+            node.ref1_addr = node.offset + kInstructionSizeStepBytes +
+                static_cast<uint32_t>(a.d16_pc.d16);
+            node.ref_kinds = kRef1RelMask | kRefReadMask;
         }
         break;
     case AddrMode::kImmediate: // 4ebc / 4efc

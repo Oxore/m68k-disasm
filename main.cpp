@@ -67,6 +67,8 @@ DisasmNode *DisasmMap::insertTracedNode(const uint32_t offset, const TracedNodeT
         // instruction, then it must become an instruction node.
         if (type == TracedNodeType::kInstruction && node->type != TracedNodeType::kInstruction) {
             *const_cast<TracedNodeType*>(&node->type) = type;
+            // Make sure it is OpCode::kNone so it will be properly disassembled
+            node->op = Op{};
         }
         return node;
     }
