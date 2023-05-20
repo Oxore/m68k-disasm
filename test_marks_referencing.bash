@@ -62,7 +62,7 @@ run_check_rdisp() {
 }
 
 run_check_r() {
-  if grep -e "[^0-9a-zA-Z_][0-9]\+" ${file_asm} >/dev/null 2>&1; then
+  if grep -e "[^0-9a-zA-Z_(+][0-9]\+" ${file_asm} >/dev/null 2>&1; then
     echo -e "${CRED}FAIL${CRST}: raw number or displacement emitted"
     cat ${file_asm}
     exit
@@ -92,4 +92,7 @@ run_test_rdisp "braw .+2" "\x4e\x71\x60\x00\x00\x00"
 run_test_rword "moveml 0x0:w,%d0" "\x4c\xf8\x00\x01\x00\x00"
 run_test_rword "moveml 0x6:w,%a0" "\x4c\xf8\x01\x00\x00\x06\x4e\x71\x4e\x71"
 run_test_rword "movemw 0x0:l,%a0" "\x4e\x71\x4e\x71\x4c\xb9\x01\x00\x00\x00\x00\x02"
+run_test_rpcrel "lea (0,PC)" "\x47\xfa\x00\x00"
+run_test_rpcrel "jmp (0,PC)" "\x4e\xfa\x00\x00"
+run_test_rpcrel "movemw (0,PC),%a0" "\x4e\x71\x4e\x71\x4c\xba\x01\x00\x00\x00"
 run_test_rword "movew 0x0:w,0x2:w" "\x4e\x75\x4e\x76\x31\xf8\x00\x00\x00\x02"

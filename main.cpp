@@ -300,7 +300,8 @@ static void RenderDisassembly(
                         (s.rel_marks
                          ? ((ref1 ? (node->ref_kinds & kRef1RelMask) : 0) |
                              (ref2 ? (node->ref_kinds & kRef2RelMask) : 0))
-                         : 0);
+                         : 0) |
+                        (node->ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
                     node->op.FPrint(output, ref_kinds, node->offset, ref1_addr, ref2_addr);
                     if (s.xrefs_to && ref1) {
                         char ref_addr_str[12]{};

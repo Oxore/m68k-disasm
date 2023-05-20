@@ -273,9 +273,13 @@ static size_t disasm_ext_movem(
         if (dir == MoveDirection::kRegisterToMemory) {
             return disasm_verbatim(node, instr);
         } else if (a.mode == AddrMode::kD16PCAddr) {
-            node.ref1_addr = node.offset + kInstructionSizeStepBytes +
+            // XXX: kRefPcRelFix2Bytes flag is a hack that needed to correctly
+            // print PC relative mark referenced value for MOVEM. Alongside with
+            // *NOT* adding kInstructionSizeStepBytes to ref1_addr. Still
+            // figuring that out.
+            node.ref1_addr = node.offset + kInstructionSizeStepBytes * 2 +
                 static_cast<uint32_t>(a.d16_pc.d16);
-            node.ref_kinds = kRef1RelMask | kRef1ReadMask;
+            node.ref_kinds = kRef1RelMask | kRef1ReadMask | kRefPcRelFix2Bytes;
         }
         break;
     case AddrMode::kImmediate: // 4ebc / 4efc
@@ -1833,11 +1837,15 @@ int Arg::SNPrint(
         }
     case ArgType::kD16PCAddr:
         if (ref_kinds & kRefRelMask) {
-            if (static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) == ref_addr) {
+            // XXX: Most of instructions with PC relative values have 2 bytes
+            // added to the offset, some does not. Still figuring that out.
+            const bool has_fix = ref_kinds & kRefPcRelFix2Bytes;
+            const uint32_t arg_addr = self_addr + d16_pc.d16 + kInstructionSizeStepBytes + (has_fix ? kInstructionSizeStepBytes : 0);
+            if (arg_addr == ref_addr) {
                 return snprintf(buf, bufsz, "%%pc@(.L%08x:w)", ref_addr);
             } else {
-                assert(static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) > ref_addr);
-                return snprintf(buf, bufsz,  "%%pc@(.L%08x+%d:w)", ref_addr, static_cast<uint32_t>(self_addr + d16_pc.d16 + kInstructionSizeStepBytes) - ref_addr);
+                assert(arg_addr > ref_addr);
+                return snprintf(buf, bufsz,  "%%pc@(.L%08x+%d:w)", ref_addr, arg_addr - ref_addr);
             }
         } else {
             return snprintf(buf, bufsz, "%%pc@(%d:w)", d16_pc.d16);
@@ -1888,10 +1896,10 @@ int Op::FPrint(
     OpcodeSNPrintf(mnemonic_str, kMnemonicBufferSize, opcode, condition, size_spec);
     if (arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
-        arg1.SNPrint(arg1_str, kArgsBufferSize, ref_kinds & kRef1Mask, self_addr, ref1_addr);
+        arg1.SNPrint(arg1_str, kArgsBufferSize, ref_kinds & (kRef1Mask | kRefPcRelFix2Bytes), self_addr, ref1_addr);
         if (arg2.type != ArgType::kNone) {
             char arg2_str[kArgsBufferSize]{};
-            arg2.SNPrint(arg2_str, kArgsBufferSize, ref_kinds & kRef2Mask, self_addr, ref2_addr);
+            arg2.SNPrint(arg2_str, kArgsBufferSize, ref_kinds & (kRef2Mask | kRefPcRelFix2Bytes), self_addr, ref2_addr);
             return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
         } else {
             return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);

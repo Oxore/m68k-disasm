@@ -25,10 +25,14 @@ constexpr RefKindMask kRef2WriteMask = (1 << 7); // For second argument
 /// Indicates whether instruction is a call or just a branch, for any argument.
 /// Calls are BSR and JSR, branches are DBcc, Bcc and JMP.
 constexpr RefKindMask kRefCallMask = (1 << 8);
+/// Hack flag for MOVEM with PC relative value when -frel-marks is set
+constexpr RefKindMask kRefPcRelFix2Bytes = (1 << 9);
+/// Everything for first argument
+constexpr RefKindMask kRef1Mask = kRef1RelMask | kRef1AbsMask | kRef1ReadMask | kRef1WriteMask;
+/// Everything for Second argument
+constexpr RefKindMask kRef2Mask = kRef2RelMask | kRef2AbsMask | kRef2ReadMask | kRef2WriteMask;
 constexpr RefKindMask kRefRelMask = kRef1RelMask | kRef2RelMask;
 constexpr RefKindMask kRefAbsMask = kRef1AbsMask | kRef2AbsMask;
-constexpr RefKindMask kRef1Mask = kRef1RelMask | kRef1AbsMask; // For first argument
-constexpr RefKindMask kRef2Mask = kRef2RelMask | kRef2AbsMask; // For second argument
 constexpr RefKindMask kRef1DataMask = kRef1ReadMask | kRef1WriteMask; // For first argument
 constexpr RefKindMask kRef2DataMask = kRef2ReadMask | kRef2WriteMask; // For second argument
 constexpr RefKindMask kRefReadMask = kRef1ReadMask | kRef2ReadMask; // For any argument
