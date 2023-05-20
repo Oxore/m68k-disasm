@@ -178,23 +178,23 @@ static size_t disasm_jsr_jmp(
     case AddrMode::kWord: // 4eb8 / 4ef8
         {
             const uint32_t ref_addr = static_cast<uint32_t>(a.lword);
-            node.ref_addr = ref_addr;
-            node.has_ref = true;
+            node.ref1_addr = ref_addr;
+            node.ref_kinds = kRef1AbsMask;
         }
         break;
     case AddrMode::kLong: // 4eb9 / 4ef9
         {
             const uint32_t ref_addr = static_cast<uint32_t>(a.lword);
-            node.ref_addr = ref_addr;
-            node.has_ref = true;
+            node.ref1_addr = ref_addr;
+            node.ref_kinds = kRef1AbsMask;
         }
         break;
     case AddrMode::kD16PCAddr: // 4eba / 4efa
         {
             const uint32_t ref_addr = node.offset + kInstructionSizeStepBytes +
                 static_cast<uint32_t>(a.d16_pc.d16);
-            node.ref_addr = ref_addr;
-            node.has_ref = true;
+            node.ref1_addr = ref_addr;
+            node.ref_kinds = kRef1RelMask;
         }
         break;
     case AddrMode::kD8PCXiAddr: // 4ebb / 4efb
@@ -205,7 +205,7 @@ static size_t disasm_jsr_jmp(
         return disasm_verbatim(node, instr);
     }
     const bool is_jmp = instr & 0x40;
-    node.is_call = !is_jmp;
+    node.ref_kinds |= is_jmp ? 0 : kRefCallMask;
     node.op = Op::Typical(is_jmp ? OpCode::kJMP : OpCode::kJSR, OpSize::kNone, a);
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
@@ -299,9 +299,17 @@ static size_t disasm_lea(
         return disasm_verbatim(node, instr);
     case AddrMode::kD16AnAddr:
     case AddrMode::kD8AnXiAddr:
+        break;
     case AddrMode::kWord:
     case AddrMode::kLong:
+        node.ref1_addr = static_cast<uint32_t>(addr.lword);
+        node.ref_kinds = kRef1AbsMask | kRefReadMask;
+        break;
     case AddrMode::kD16PCAddr:
+        node.ref1_addr = node.offset + kInstructionSizeStepBytes +
+            static_cast<uint32_t>(addr.d16_pc.d16);
+        node.ref_kinds = kRef1RelMask | kRefReadMask;
+        break;
     case AddrMode::kD8PCXiAddr:
         break;
     case AddrMode::kImmediate:
@@ -369,9 +377,8 @@ static size_t disasm_bra_bsr_bcc(
     const uint32_t ref_addr = static_cast<uint32_t>(node.offset + dispmt);
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
     // False condition Indicates BSR
-    node.is_call = (condition == Condition::kF);
-    node.ref_addr = ref_addr;
-    node.has_ref = true;
+    node.ref1_addr = ref_addr;
+    node.ref_kinds = kRef1RelMask | ((condition == Condition::kF) ? kRefCallMask : 0);
     node.op = Op{OpCode::kBcc, opsize, condition, Arg::Displacement(dispmt)};
     return node.size;
 }
@@ -992,8 +999,8 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuff
     }
     const int16_t dispmt_raw = GetI16BE(code.buffer + node.offset + kInstructionSizeStepBytes);
     const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
-    node.ref_addr = static_cast<uint32_t>(node.offset + dispmt);
-    node.has_ref = true;
+    node.ref2_addr = static_cast<uint32_t>(node.offset + dispmt);
+    node.ref_kinds = kRef2RelMask;
     node.op = Op{
         OpCode::kDBcc,
         OpSize::kNone,
@@ -1499,11 +1506,16 @@ size_t DisasmNode::Disasm(const DataBuffer &code)
         return this->size;
     }
     size = kInstructionSizeStepBytes;
-    has_ref = 0;
-    ref_addr = 0;
-    is_call = false;
+    ref_kinds = 0;
+    ref1_addr = 0;
+    ref2_addr = 0;
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
-    return m68k_disasm(*this, instr, code);
+    if (this->type == TracedNodeType::kInstruction) {
+        return m68k_disasm(*this, instr, code);
+    } else {
+        // Data should not be disassembled
+        return disasm_verbatim(*this, instr);
+    }
 }
 
 size_t DisasmNode::DisasmAsRaw(const DataBuffer &code)
@@ -1511,9 +1523,9 @@ size_t DisasmNode::DisasmAsRaw(const DataBuffer &code)
     // We assume that machine have no MMU and ROM data always starts with 0
     assert(this->offset < code.occupied_size);
     size = kInstructionSizeStepBytes;
-    has_ref = 0;
-    ref_addr = 0;
-    is_call = false;
+    ref_kinds = 0;
+    ref1_addr = 0;
+    ref2_addr = 0;
     const uint16_t instr = GetU16BE(code.buffer + this->offset);
     return disasm_verbatim(*this, instr);
 }
@@ -1735,7 +1747,7 @@ static size_t snprint_reg_mask(
 int Arg::SNPrint(
             char *const buf,
             const size_t bufsz,
-            const unsigned ref_kinds,
+            const RefKindMask ref_kinds,
             const uint32_t self_addr,
             const uint32_t ref_addr) const
 {
@@ -1828,19 +1840,20 @@ int Arg::SNPrint(
 
 int Op::FPrint(
         FILE *const stream,
-        const unsigned ref_kinds,
+        const RefKindMask ref_kinds,
         const uint32_t self_addr,
-        const uint32_t ref_addr) const
+        const uint32_t ref1_addr,
+        const uint32_t ref2_addr) const
 {
     assert(opcode != OpCode::kNone);
     char mnemonic_str[kMnemonicBufferSize]{};
     OpcodeSNPrintf(mnemonic_str, kMnemonicBufferSize, opcode, condition, size_spec);
     if (arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
-        arg1.SNPrint(arg1_str, kArgsBufferSize, ref_kinds, self_addr, ref_addr);
+        arg1.SNPrint(arg1_str, kArgsBufferSize, ref_kinds & kRef1Mask, self_addr, ref1_addr);
         if (arg2.type != ArgType::kNone) {
             char arg2_str[kArgsBufferSize]{};
-            arg2.SNPrint(arg2_str, kArgsBufferSize, ref_kinds, self_addr, ref_addr);
+            arg2.SNPrint(arg2_str, kArgsBufferSize, ref_kinds & kRef2Mask, self_addr, ref2_addr);
             return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
         } else {
             return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);

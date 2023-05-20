@@ -12,8 +12,22 @@ struct Settings {
     bool raw_data_comment{};
 };
 
-constexpr unsigned kRefRelMask = 1;
-constexpr unsigned kRefAbsMask = 2;
+using RefKindMask = unsigned;
+
+constexpr RefKindMask kRef1RelMask = (1 << 0); // For first argument
+constexpr RefKindMask kRef1AbsMask = (1 << 1); // For first argument
+constexpr RefKindMask kRef2RelMask = (1 << 2); // For second argument
+constexpr RefKindMask kRef2AbsMask = (1 << 3); // For second argument
+/// Indicates whether instruction is a call or just a branch, for any argument.
+/// Calls are BSR and JSR, branches are DBcc, Bcc and JMP.
+constexpr RefKindMask kRefCallMask = (1 << 4);
+constexpr RefKindMask kRefReadMask = (1 << 5); // For any argument
+constexpr RefKindMask kRefWriteMask = (1 << 6); // For any argument
+constexpr RefKindMask kRefRelMask = kRef1RelMask | kRef2RelMask;
+constexpr RefKindMask kRefAbsMask = kRef1AbsMask | kRef2AbsMask;
+constexpr RefKindMask kRef1Mask = kRef1RelMask | kRef1AbsMask; // For first argument
+constexpr RefKindMask kRef2Mask = kRef2RelMask | kRef2AbsMask; // For second argument
+constexpr RefKindMask kRefDataMask = kRefReadMask | kRefWriteMask;
 constexpr size_t kInstructionSizeStepBytes = 2;
 constexpr size_t kRomSizeBytes = 4 * 1024 * 1024;
 constexpr size_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStepBytes;

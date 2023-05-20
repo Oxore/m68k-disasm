@@ -297,7 +297,7 @@ struct Arg {
     int SNPrint(
             char *buf,
             size_t bufsz,
-            unsigned ref_kinds = 0,
+            RefKindMask ref_kinds = 0,
             uint32_t self_addr = 0,
             uint32_t ref_addr = 0) const;
 };
@@ -314,8 +314,10 @@ constexpr size_t kArgsBufferSize = 80;
 
 enum class ReferenceType {
     kUnknown = 0,
-    kBranch,
     kCall,
+    kBranch,
+    kRead,
+    kWrite,
 };
 
 struct ReferenceRecord {
@@ -350,9 +352,10 @@ struct Op {
     }
     int FPrint(
             FILE *,
-            unsigned ref_kinds = 0,
+            RefKindMask ref_kinds = 0,
             uint32_t self_addr = 0,
-            uint32_t ref_addr = 0) const;
+            uint32_t ref1_addr = 0,
+            uint32_t ref2_addr = 0) const;
 };
 
 struct DisasmNode {
@@ -362,12 +365,11 @@ struct DisasmNode {
     /// Instruction size in bytes
     size_t size{kInstructionSizeStepBytes};
     /// Indicates whether `ref_addr` should be interpreted and how
-    bool has_ref{};
-    /// Absolute address of where to branch to
-    uint32_t ref_addr{};
-    /// Indicates whether instruction is a call (BSR, JSR) or just a branch
-    /// (Bcc, JMP) if `has_branch_addr` is set
-    bool is_call{};
+    RefKindMask ref_kinds{};
+    /// Absolute address of reference
+    uint32_t ref1_addr{};
+    /// Absolute address of reference
+    uint32_t ref2_addr{};
     ReferenceNode *ref_by{};
     ReferenceNode *last_ref_by{};
     Op op{};

@@ -58,10 +58,16 @@ static uint32_t AlignInstructionAddress(const uint32_t offset)
     return offset & ~1UL;
 }
 
-DisasmNode *DisasmMap::insertTracedNode(uint32_t offset, TracedNodeType type)
+DisasmNode *DisasmMap::insertTracedNode(const uint32_t offset, const TracedNodeType type)
 {
     auto *node = findNodeByOffset(offset);
     if (node) {
+        // Instruction nodes take precedence over data nodes. If a node that
+        // was previously accessed only as data now turns out to be an
+        // instruction, then it must become an instruction node.
+        if (type == TracedNodeType::kInstruction && node->type != TracedNodeType::kInstruction) {
+            *const_cast<TracedNodeType*>(&node->type) = type;
+        }
         return node;
     }
     node = new DisasmNode(DisasmNode{type, AlignInstructionAddress(offset)});
@@ -107,9 +113,14 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
             node->DisasmAsRaw(code);
         }
         // FIXME implement deep graph walk for DisasmMapType::kTraced case
-        if (node->has_ref && node->ref_addr < code.occupied_size) {
-            auto *const ref_node = insertTracedNode(
-                    node->ref_addr, TracedNodeType::kInstruction);
+        const bool has_code_ref =
+            ((node->ref_kinds & kRef1Mask) && node->ref1_addr < code.occupied_size) ||
+            ((node->ref_kinds & kRef2Mask) && node->ref2_addr < code.occupied_size);
+        if (has_code_ref) {
+            const uint32_t ref_addr = (node->ref_kinds & kRef1Mask) ? node->ref1_addr : node->ref2_addr;
+            const TracedNodeType type = (node->ref_kinds & (kRefReadMask | kRefWriteMask))
+                ? TracedNodeType::kData : TracedNodeType::kInstruction;
+            auto *const ref_node = insertTracedNode(ref_addr, type);
             const auto size = ref_node->Disasm(code);
             assert(size >= kInstructionSizeStepBytes);
             if (canBeAllocated(*ref_node)) {
@@ -120,8 +131,14 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
             } else {
                 ref_node->DisasmAsRaw(code);
             }
-            ref_node->AddReferencedBy(
-                    node->offset, node->is_call ? ReferenceType::kCall : ReferenceType::kBranch);
+            const auto ref_type = (node->ref_kinds & kRefCallMask)
+                ? ReferenceType::kCall
+                : (node->ref_kinds & kRefReadMask)
+                    ? ReferenceType::kRead
+                    : (node->ref_kinds & kRefWriteMask)
+                        ? ReferenceType::kWrite
+                        : ReferenceType::kBranch;
+            ref_node->AddReferencedBy(node->offset, ref_type);
         }
         i += node->size;
     }
@@ -167,9 +184,11 @@ static size_t RenderRawDataComment(
 static const char *ReferenceTypeToString(ReferenceType type)
 {
     switch (type) {
-    case ReferenceType::kUnknown: return "UNKN";
-    case ReferenceType::kBranch: return "BRANCH";
+    case ReferenceType::kUnknown: return "UNKNOWN";
     case ReferenceType::kCall: return "CALL";
+    case ReferenceType::kBranch: return "BRANCH";
+    case ReferenceType::kRead: return "READ";
+    case ReferenceType::kWrite: return "WRITE";
     }
     return "UNKN";
 }
@@ -225,21 +244,27 @@ static void RenderDisassembly(
                 }
                 fprintf(output, "\n");
             } else {
-                const bool with_reference = node->has_ref && s.marks &&
-                    (s.abs_marks || s.rel_marks);
-                const auto *referenced = disasm_map.FindNodeByOffset(node->ref_addr);
-                if (with_reference && referenced) {
-                    const uint32_t ref_addr = referenced->offset;
-                    const unsigned ref_kinds = ((s.abs_marks ? kRefAbsMask : 0) |
-                        (s.rel_marks ? kRefRelMask : 0));
-                    node->op.FPrint(output, ref_kinds, node->offset, ref_addr);
+                const bool with_ref = node->ref_kinds && s.marks && (s.abs_marks || s.rel_marks);
+                const auto *ref1 = (node->ref_kinds & kRef1Mask)
+                    ? disasm_map.FindNodeByOffset(node->ref1_addr) : nullptr;
+                const auto *ref2 = (node->ref_kinds & kRef2Mask)
+                    ? disasm_map.FindNodeByOffset(node->ref2_addr) : nullptr;
+                const uint32_t ref1_addr = (with_ref && ref1) ? ref1->offset : 0;
+                const uint32_t ref2_addr = (with_ref && ref2) ? ref2->offset : 0;
+                if (with_ref && (ref1 || ref2)) {
+                    const RefKindMask ref_kinds =
+                        ((s.abs_marks ? (node->ref_kinds & kRefAbsMask) : 0) |
+                        (s.rel_marks ? (node->ref_kinds & kRefRelMask) : 0));
+                    node->op.FPrint(output, ref_kinds, node->offset, ref1_addr, ref2_addr);
                 } else {
                     node->op.FPrint(output);
                 }
             }
-            if (node->has_ref && s.xrefs_to) {
+            if (node->ref_kinds && s.xrefs_to) {
                 char ref_addr_str[12]{};
-                snprintf(ref_addr_str, sizeof(ref_addr_str), " .L%08x", node->ref_addr);
+                const uint32_t ref_addr =
+                    (node->ref_kinds & kRef1Mask) ? node->ref1_addr : node->ref2_addr;
+                snprintf(ref_addr_str, sizeof(ref_addr_str), " .L%08x", ref_addr);
                 fprintf(output, " |%s", ref_addr_str);
             }
             if (s.raw_data_comment) {
