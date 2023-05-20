@@ -262,10 +262,10 @@ static size_t disasm_ext_movem(
     case AddrMode::kLong: // 48b9 / 4cb9 / 48f9 / 4cf9
         if (dir == MoveDirection::kRegisterToMemory) {
             node.ref2_addr = static_cast<uint32_t>(a.lword);
-            node.ref_kinds = kRef2AbsMask | kRefWriteMask;
+            node.ref_kinds = kRef2AbsMask | kRef2WriteMask;
         } else {
             node.ref1_addr = static_cast<uint32_t>(a.lword);
-            node.ref_kinds = kRef1AbsMask | kRefReadMask;
+            node.ref_kinds = kRef1AbsMask | kRef1ReadMask;
         }
         break;
     case AddrMode::kD16PCAddr: // 48ba / 4cba / 48fa / 4cfa
@@ -275,7 +275,7 @@ static size_t disasm_ext_movem(
         } else if (a.mode == AddrMode::kD16PCAddr) {
             node.ref1_addr = node.offset + kInstructionSizeStepBytes +
                 static_cast<uint32_t>(a.d16_pc.d16);
-            node.ref_kinds = kRef1RelMask | kRefReadMask;
+            node.ref_kinds = kRef1RelMask | kRef1ReadMask;
         }
         break;
     case AddrMode::kImmediate: // 4ebc / 4efc
@@ -315,12 +315,12 @@ static size_t disasm_lea(
     case AddrMode::kWord:
     case AddrMode::kLong:
         node.ref1_addr = static_cast<uint32_t>(addr.lword);
-        node.ref_kinds = kRef1AbsMask | kRefReadMask;
+        node.ref_kinds = kRef1AbsMask | kRef1ReadMask;
         break;
     case AddrMode::kD16PCAddr:
         node.ref1_addr = node.offset + kInstructionSizeStepBytes +
             static_cast<uint32_t>(addr.d16_pc.d16);
-        node.ref_kinds = kRef1RelMask | kRefReadMask;
+        node.ref_kinds = kRef1RelMask | kRef1ReadMask;
         break;
     case AddrMode::kD8PCXiAddr:
         break;
@@ -603,12 +603,35 @@ static size_t disasm_move_movea(
         ? OpSize::kByte : (opsize_raw == 3 ? OpSize::kWord : OpSize::kLong);
     const auto src = FetchArg(
             node.offset + kInstructionSizeStepBytes, code, instr, opsize);
-    if (src.mode == AddrMode::kInvalid) {
+    switch (src.mode) {
+    case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
-    }
-    if (opsize == OpSize::kByte && src.mode == AddrMode::kAn) {
-        // Does not exist
-        return disasm_verbatim(node, instr);
+    case AddrMode::kDn:
+        break;
+    case AddrMode::kAn:
+        if (opsize == OpSize::kByte) {
+            // Does not exist
+            return disasm_verbatim(node, instr);
+        }
+    case AddrMode::kAnAddr:
+    case AddrMode::kAnAddrIncr:
+    case AddrMode::kAnAddrDecr:
+    case AddrMode::kD16AnAddr:
+    case AddrMode::kD8AnXiAddr:
+        break;
+    case AddrMode::kWord:
+    case AddrMode::kLong:
+        node.ref1_addr = static_cast<uint32_t>(src.lword);
+        node.ref_kinds |= kRef1AbsMask | kRef1ReadMask;
+        break;
+    case AddrMode::kD16PCAddr:
+        node.ref1_addr = node.offset + kInstructionSizeStepBytes +
+            static_cast<uint32_t>(src.d16_pc.d16);
+        node.ref_kinds |= kRef1RelMask | kRef1ReadMask;
+        break;
+    case AddrMode::kD8PCXiAddr:
+    case AddrMode::kImmediate:
+        break;
     }
     const int m = (instr >> 6) & 7;
     const int xn = (instr >> 9) & 7;
@@ -629,8 +652,11 @@ static size_t disasm_move_movea(
     case AddrMode::kAnAddrDecr:
     case AddrMode::kD16AnAddr:
     case AddrMode::kD8AnXiAddr:
+        break;
     case AddrMode::kWord:
     case AddrMode::kLong:
+        node.ref2_addr = static_cast<uint32_t>(dst.lword);
+        node.ref_kinds |= kRef2AbsMask | kRef2WriteMask;
         break;
     case AddrMode::kD16PCAddr:
     case AddrMode::kD8PCXiAddr:

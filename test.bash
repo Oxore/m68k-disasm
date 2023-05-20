@@ -117,7 +117,7 @@ run_test_simple "cmpb (An)+, Dn" "\xb4\x19"
 run_test_simple "cmpb -(An), Dn" "\xb4\x21"
 run_test_simple "cmpl (d8,PC,An), Dn" "\xb0\xbb\x88\xff"
 run_test_simple "cmpw (xxx).W, Dn" "\xb0\x78\x88\xff"
-# GNU AS would emit CMPI for "cmp #imm,Xn", so we diassemble it as short
+# GNU AS would emit CMPI for "cmp #imm,Xn", so we disassemble it as short
 run_test_expect_short "cmpl #imm, D6" "\xb6\xbc\x44\xd1\xe6\xe9"
 
 # bxxx cmpa
@@ -172,7 +172,7 @@ run_test_simple "andb (An), Dn" "\xc4\x11"
 run_test_simple "andb (An)+, Dn" "\xc4\x19"
 run_test_simple "andw -(An), Dn" "\xc4\x61"
 run_test_simple "andl (d8,PC,An), Dn" "\xc0\xbb\xc8\x07"
-# GNU AS would emit ANDI for "and #imm,Xn", so we diassemble it as short
+# GNU AS would emit ANDI for "and #imm,Xn", so we disassemble it as short
 run_test_expect_short "andl #imm, D6" "\xc6\xbc\x44\xd1\xe6\xe9"
 
 # cxxx abcd
@@ -194,7 +194,7 @@ run_test_simple "orb (An), Dn" "\x84\x11"
 run_test_simple "orb (An)+, Dn" "\x84\x19"
 run_test_simple "orw -(An), Dn" "\x84\x61"
 run_test_simple "orl (d8,PC,An), Dn" "\x80\xbb\x88\x07"
-# GNU AS would emit ORI for "or #imm,Xn", so we diassemble it as short
+# GNU AS would emit ORI for "or #imm,Xn", so we disassemble it as short
 run_test_expect_short "orl #imm, D6" "\x86\xbc\x44\xd1\xe6\xe9"
 run_test_expect_short "orl D2, D0 swapped direction" "\x81\x42"
 
@@ -261,7 +261,7 @@ run_test_simple "subw An, Dn" "\x94\x49"
 run_test_simple "subb (An), Dn" "\x94\x11"
 run_test_simple "subb (An)+, Dn" "\x94\x19"
 run_test_simple "subb -(An), Dn" "\x94\x21"
-# GNU AS would emit SUBQ for "sub #imm,Xn", so we diassemble it as short
+# GNU AS would emit SUBQ for "sub #imm,Xn", so we disassemble it as short
 run_test_expect_short "subl #imm, D6" "\x96\xbc\x44\xd1\xe6\xe9"
 
 # dxxx addx
@@ -290,7 +290,7 @@ run_test_simple "addb (An), Dn" "\xd4\x11"
 run_test_simple "addb (An)+, Dn" "\xd4\x19"
 run_test_simple "addb -(An), Dn" "\xd4\x21"
 run_test_simple "addl (d8,PC,An), Dn" "\xd0\xbb\x88\xff"
-# GNU AS would emit ADDI for "add #imm,Xn", so we diassemble it as short
+# GNU AS would emit ADDI for "add #imm,Xn", so we disassemble it as short
 run_test_expect_short "addl #imm, D6" "\xd6\xbc\x44\xd1\xe6\xe9"
 
 # 4xxx chkw
@@ -412,13 +412,10 @@ run_test_simple "moveq #127 to D7" "\x7e\x7f"
 run_test_simple "moveq #-1 to D5" "\x7a\xff"
 run_test_simple "moveq #-128 to D1" "\x72\x80"
 
-# From random tests
-# 
-run_test_simple "movel %pc@(-16,%a0:l),%a3@+ with nop" "\x26\xfb\x88\xf0\x4e\x71"
-
 # 1xxx [xxxx [xxxx]]
 #
 run_test_simple "moveb Dn to Dn" "\x10\x01"
+run_test_expect_short "moveb An to Dn" "\x10\x09"
 run_test_simple "moveb (An) to Dn" "\x10\x11"
 run_test_simple "moveb (An)+ to Dn" "\x10\x19"
 run_test_simple "moveb -(An) to Dn" "\x10\x21"
@@ -463,6 +460,10 @@ run_test_simple "movel (d8,PC,Xi) to Dn" "\x24\x3b\xa8\x90"
 run_test_simple "movel #imm to Dn" "\x24\x3c\xa8\x90\x00\x00"
 run_test_simple "moveal Dn" "\x20\x41"
 run_test_simple "moveal #imm" "\x20\x7c\xa8\x90\x00\x00"
+
+# From random tests
+#
+run_test_simple "movel %pc@(-16,%a0:l),%a3@+ with nop" "\x26\xfb\x88\xf0\x4e\x71"
 
 # 4890 xxx
 #
