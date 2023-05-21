@@ -69,8 +69,9 @@ What is **not** the goal (at least not in this repo):
   variations.
 - Base address is always assumed to be `0x00000000`.
 - Maximum binary size is 4MiB.
-- Labels/marks for locations outside of available are not generated, they remain
-  as raw addresses and/or PC-relative offsets.
+- Labels/marks for locations outside of the code being disassembled are not
+  generated, they remain as raw address arguments and/or PC-relative offset
+  arguments.
 
 ## Build
 
