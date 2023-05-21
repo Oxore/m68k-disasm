@@ -119,7 +119,15 @@ I decided to go without code formatting standard for now. Just be nice to not
 mix up spaces with tabs (use spaces everywhere) if you are sending patch or
 pull request and that's it.
 
-Run tests when the work is done.
+C++ STL is not welcomed here. Almost every STL header (besides C standard
+library wrappers like `cstring` or `cstdio`) increases compilation times
+significantly. This disassembler is used to be developed on Celeron N4000
+machine with eMMC memory instead of SSD and it is very sensitive to STL bullshit
+increasing compile times. Please, make sure you don't use any compile time heavy
+headers. If you really need something like hashmap or RB-tree, then bring some
+tiny MIT/BSD/Unlicense library from somewhere or write it yourself.
+
+Run tests when the work is done to make sure you didn't break anything.
 
 <!-- Markdown link & img dfn's -->
 [readme-template]: https://github.com/dbader/readme-template
