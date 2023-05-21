@@ -1335,9 +1335,8 @@ static size_t disasm_cmpm(DisasmNode &node, const uint16_t instr)
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     // Must be already handled by parent call
     assert(opsize != OpSize::kInvalid);
-    const int m = (instr >> 3) & 7;
-    assert(m == 1);
-    (void) m;
+    // M has to be set to 0b001
+    assert(((instr >> 3) & 7) == 1);
     const int xn = instr & 7;
     const int xi = (instr >> 9) & 7;
     const auto src = Arg::AnAddrIncr(xn);
@@ -1917,10 +1916,12 @@ int Op::FPrint(
     OpcodeSNPrintf(mnemonic_str, kMnemonicBufferSize, opcode, condition, size_spec);
     if (arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
-        arg1.SNPrint(arg1_str, kArgsBufferSize, ref_kinds & (kRef1Mask | kRefPcRelFix2Bytes), self_addr, ref1_addr);
+        const RefKindMask ref1_kinds = ref_kinds & (kRef1Mask | kRefPcRelFix2Bytes);
+        arg1.SNPrint(arg1_str, kArgsBufferSize, ref1_kinds, self_addr, ref1_addr);
         if (arg2.type != ArgType::kNone) {
             char arg2_str[kArgsBufferSize]{};
-            arg2.SNPrint(arg2_str, kArgsBufferSize, ref_kinds & (kRef2Mask | kRefPcRelFix2Bytes), self_addr, ref2_addr);
+            const RefKindMask ref2_kinds = ref_kinds & (kRef2Mask | kRefPcRelFix2Bytes);
+            arg2.SNPrint(arg2_str, kArgsBufferSize, ref2_kinds, self_addr, ref2_addr);
             return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
         } else {
             return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);
