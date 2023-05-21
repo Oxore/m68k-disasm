@@ -297,6 +297,7 @@ struct Arg {
     int SNPrint(
             char *buf,
             size_t bufsz,
+            bool imm_as_hex = false,
             RefKindMask ref_kinds = 0,
             uint32_t self_addr = 0,
             uint32_t ref_addr = 0) const;

@@ -892,10 +892,10 @@ static size_t disasm_move_usp(DisasmNode &node, const uint16_t instr)
     const auto dir = static_cast<MoveDirection>((instr >> 3) & 1);
     if (dir == MoveDirection::kRegisterToMemory) {
         node.op = Op::Typical(
-                OpCode::kMOVE, OpSize::kLong, Arg::AddrModeXn(ArgType::kAn, xn), Arg::USP());
+                OpCode::kMOVE, OpSize::kLong, Arg::An(xn), Arg::USP());
     } else {
         node.op = Op::Typical(
-                OpCode::kMOVE, OpSize::kLong, Arg::USP(), Arg::AddrModeXn(ArgType::kAn, xn));
+                OpCode::kMOVE, OpSize::kLong, Arg::USP(), Arg::An(xn));
     }
     return node.size = kInstructionSizeStepBytes;
 }
@@ -1809,6 +1809,7 @@ static size_t snprint_reg_mask(
 int Arg::SNPrint(
             char *const buf,
             const size_t bufsz,
+            const bool imm_as_hex,
             const RefKindMask ref_kinds,
             const uint32_t self_addr,
             const uint32_t ref_addr) const
@@ -1878,7 +1879,11 @@ int Arg::SNPrint(
                 RegNum(d8_pc_xi.xi),
                 SizeSpecChar(d8_pc_xi.xi));
     case ArgType::kImmediate:
-        return snprintf(buf, bufsz, "#%d", lword);
+        if (imm_as_hex) {
+            return snprintf(buf, bufsz, "#0x%x", lword);
+        } else {
+            return snprintf(buf, bufsz, "#%d", lword);
+        }
     case ArgType::kRegMask:
     case ArgType::kRegMaskPredecrement:
         return snprint_reg_mask(buf, bufsz, uword, type);
@@ -1917,11 +1922,19 @@ int Op::FPrint(
     if (arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
         const RefKindMask ref1_kinds = ref_kinds & (kRef1Mask | kRefPcRelFix2Bytes);
-        arg1.SNPrint(arg1_str, kArgsBufferSize, ref1_kinds, self_addr, ref1_addr);
+        // It is useful to have immediate value printed as hex if destination
+        // argument is plain address register, status register or condition code
+        // register. USP is not the case because it's value may be moved only to
+        // or from An register.
+        const bool imm_as_hex =
+            arg2.type == ArgType::kAn ||
+            arg2.type == ArgType::kCCR ||
+            arg2.type == ArgType::kSR;
+        arg1.SNPrint(arg1_str, kArgsBufferSize, imm_as_hex, ref1_kinds, self_addr, ref1_addr);
         if (arg2.type != ArgType::kNone) {
             char arg2_str[kArgsBufferSize]{};
             const RefKindMask ref2_kinds = ref_kinds & (kRef2Mask | kRefPcRelFix2Bytes);
-            arg2.SNPrint(arg2_str, kArgsBufferSize, ref2_kinds, self_addr, ref2_addr);
+            arg2.SNPrint(arg2_str, kArgsBufferSize, false, ref2_kinds, self_addr, ref2_addr);
             return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
         } else {
             return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);
