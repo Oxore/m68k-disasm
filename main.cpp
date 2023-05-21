@@ -301,6 +301,7 @@ static void RenderDisassembly(
                          ? ((ref1 ? (node->ref_kinds & kRef1RelMask) : 0) |
                              (ref2 ? (node->ref_kinds & kRef2RelMask) : 0))
                          : 0) |
+                        ((s.imm_marks && ref1) ? (node->ref_kinds & kRef1ImmMask) : 0) |
                         (node->ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
                     node->op.FPrint(output, ref_kinds, node->offset, ref1_addr, ref2_addr);
                     if (s.xrefs_to && ref1) {
@@ -468,6 +469,8 @@ static bool IsValidFeature(const char *feature)
         return true;
     } else if (0 == strcmp(feature, "abs-marks")) {
         return true;
+    } else if (0 == strcmp(feature, "imm-marks")) {
+        return true;
     } else if (0 == strcmp(feature, "xrefs-from")) {
         return true;
     } else if (0 == strcmp(feature, "xrefs-to")) {
@@ -492,6 +495,8 @@ static void ApplyFeature(Settings& s, const char *feature)
         s.rel_marks = !disable;
     } else if (0 == strcmp(feature, "abs-marks")) {
         s.abs_marks = !disable;
+    } else if (0 == strcmp(feature, "imm-marks")) {
+        s.imm_marks = !disable;
     } else if (0 == strcmp(feature, "xrefs-from")) {
         s.xrefs_from = !disable;
     } else if (0 == strcmp(feature, "xrefs-to")) {
@@ -516,6 +521,8 @@ static void PrintUsage(FILE *s, const char *argv0)
     fprintf(s, "                                    branch or call\n");
     fprintf(s, "                        abs-marks   use mark instead of number on absolute\n");
     fprintf(s, "                                    branch or call\n");
+    fprintf(s, "                        imm-marks   use mark instead of number when immediate\n");
+    fprintf(s, "                                    value moved to address register\n");
     fprintf(s, "                        xrefs-from  print xrefs comments above all places that\n");
     fprintf(s, "                                    have xrefs\n");
     fprintf(s, "                        xrefs-to    print xrefs comments after all branch \n");

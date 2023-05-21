@@ -7,6 +7,7 @@ struct Settings {
     bool marks{};
     bool rel_marks{};
     bool abs_marks{};
+    bool imm_marks{};
     bool xrefs_to{};
     bool xrefs_from{};
     bool raw_data_comment{};
@@ -27,8 +28,10 @@ constexpr RefKindMask kRef2WriteMask = (1 << 7); // For second argument
 constexpr RefKindMask kRefCallMask = (1 << 8);
 /// Hack flag for MOVEM with PC relative value when -frel-marks is set
 constexpr RefKindMask kRefPcRelFix2Bytes = (1 << 9);
+/// Register 1 may have immediate moving to address register which may be a mark
+constexpr RefKindMask kRef1ImmMask = (1 << 10);
 /// Everything for first argument
-constexpr RefKindMask kRef1Mask = kRef1RelMask | kRef1AbsMask | kRef1ReadMask | kRef1WriteMask;
+constexpr RefKindMask kRef1Mask = kRef1RelMask | kRef1AbsMask | kRef1ReadMask | kRef1WriteMask | kRef1ImmMask;
 /// Everything for Second argument
 constexpr RefKindMask kRef2Mask = kRef2RelMask | kRef2AbsMask | kRef2ReadMask | kRef2WriteMask;
 constexpr RefKindMask kRefRelMask = kRef1RelMask | kRef2RelMask;

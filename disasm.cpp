@@ -667,6 +667,17 @@ static size_t disasm_move_movea(
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
     }
+    // XXX Assuming that moving long immediate value into address register is
+    // basically a sneaky LEA. It may not be true in some cases.
+    if (src.type == ArgType::kImmediate && dst.type == ArgType::kAn) {
+        if (opsize == OpSize::kLong) {
+            node.ref1_addr = static_cast<uint32_t>(src.lword);
+            node.ref_kinds |= kRef1ImmMask | kRef1ReadMask;
+        } else if (opsize == OpSize::kWord) {
+            node.ref1_addr = static_cast<int16_t>(static_cast<uint16_t>(src.lword));
+            node.ref_kinds |= kRef1ImmMask | kRef1ReadMask;
+        }
+    }
     const auto opcode = (dst.mode == AddrMode::kAn) ? OpCode::kMOVEA : OpCode::kMOVE;
     node.op = Op::Typical(opcode, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
@@ -1879,7 +1890,15 @@ int Arg::SNPrint(
                 RegNum(d8_pc_xi.xi),
                 SizeSpecChar(d8_pc_xi.xi));
     case ArgType::kImmediate:
-        if (imm_as_hex) {
+        if (ref_kinds & kRef1ImmMask) {
+            if (static_cast<uint32_t>(lword) == ref_addr) {
+                return snprintf(buf, bufsz, "#.L%08x", ref_addr);
+            } else {
+                // It has to be AFTER the mark we are gonna reference here
+                assert(static_cast<uint32_t>(lword) > ref_addr);
+                return snprintf(buf, bufsz, "#.L%08x+%d", ref_addr, lword - ref_addr);
+            }
+        } else if (imm_as_hex) {
             return snprintf(buf, bufsz, "#0x%x", lword);
         } else {
             return snprintf(buf, bufsz, "#%d", lword);
