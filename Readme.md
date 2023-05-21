@@ -41,7 +41,24 @@ What is **not** the goal (at least not in this repo):
 - Other instruction set architectures support like MIPS, x86, amd64, ARM,
   PowerPC and so on.
 
-## Current limitations
+## Current state
+
+### Features
+
+- All M68000 instructions supported
+- It generates GNU AS compatible listing, that may be translated back to machine
+  code using `m68k-none-elf-as` in the way that it matches original binary file,
+  no matter what.
+- It generates labels (marks) for all jump instructions (JSR, JMP, BRA, Bcc and
+  DBcc) if jump location is inside the code being disassembled. This feature can
+  be enabled with `-fmarks`, `-frel-marks` and `-fabs-marks` options, all at
+  once. It also generates marks for some data accessing instructions (namely:
+  NBCD, PEA, LEA, CMP, SUB, ADD, MOVEM and MOVE) and this behavior enabled with
+  the same options as per jump instructions. It is possible to implement this
+  for all of the rest instructions, but it just has to be done if someone needs
+  it.
+
+### Limitations
 
 - Motorola 68000 only supported. That means no 68010 support or any 680x0,
   except 68000. No ColdFire support.
@@ -52,6 +69,8 @@ What is **not** the goal (at least not in this repo):
   variations.
 - Base address is always assumed to be `0x00000000`.
 - Maximum binary size is 4MiB.
+- Labels/marks for locations outside of available are not generated, they remain
+  as raw addresses and/or PC-relative offsets.
 
 ## Build
 
@@ -92,7 +111,15 @@ support all of M68000 instructions):
 
 ## Contributing
 
-Coming soon.
+I will eventually put this repo on GitHub, I guess. You can create issues and
+pull requests there. You can [email me](mailto:oxore@protonmail.com) directly to
+ask a question, send a patch or discuss problems if you prefer this over GitHub.
+
+I decided to go without code formatting standard for now. Just be nice to not
+mix up spaces with tabs (use spaces everywhere) if you are sending patch or
+pull request and that's it.
+
+Run tests when the work is done.
 
 <!-- Markdown link & img dfn's -->
 [readme-template]: https://github.com/dbader/readme-template
