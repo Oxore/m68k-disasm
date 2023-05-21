@@ -103,7 +103,7 @@ previous examples.
 To get detailed help you can run:
 
 ```
-./cmake-build/m68k-disasm -h`
+./cmake-build/m68k-disasm -h
 ```
 
 ## Project goals
