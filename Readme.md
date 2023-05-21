@@ -91,7 +91,7 @@ trace table.
 ./cmake-build/m68k-disasm -t pc-trace.txt -o disasm.S rom.bin
 ```
 
-Rr better with marks analysis and some fancy raw comments:
+Or better with marks analysis and some fancy raw comments:
 
 ```
 ./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -fmarks -fabs-marks -frel-marks -fimm-marks -t pc-trace.txt -o disasm.S rom.bin
