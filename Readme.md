@@ -11,6 +11,103 @@ incompatible asembly listing, or it is not the same as original binary after
 translation into machine code. So I decided to build my own disassembler, that
 will do exactly what I need with full control over the process and maybe more.
 
+## Build
+
+To build this project, you will need CMake and some modern C++ compiler like GCC
+or Clang. Here is how to build it using CMake:
+
+```
+cmake -B cmake-build -S .
+cmake --build cmake-build
+```
+
+It will produce a binary named `m68k-disasm` inside the `cmake-build` directory.
+You can copy it somewhere to `~/.local/bin/`, `/usr/local/bin/` or other
+directory that is added to your shell's `PATH` environment variable.
+
+It works for me on Linux, It may work the same way on OSX either and it may be
+not so easy on Windows. I can't see why it could impossible on OSX and Windows
+to build this project, but it is not tested.
+
+## Usage example
+
+You may want to run this on a random binary file just to see how it works. You
+can do it like this:
+
+```
+./cmake-build/m68k-disasm -o disasm.S /path/to/file.bin
+```
+
+This command will produce `disasm.S` file, that contains disassembly listing.
+
+You may assemble it back with `m68k-none-elf-as` to see if it is valid asm code
+with the following command sequence. Note that you need to obtain or build by
+yourself `m68k-none-elf-gcc` toolchain to run the following command sequence,
+`test.ld` is already provided in this repo.
+
+```
+m68k-none-elf-as disasm.S -o a.o
+m68k-none-elf-ld -T test.ld -o a.elf a.o
+m68k-none-elf-objcopy -O binary a.elf a.bin
+cmp /path/to/file.bin a.bin
+```
+
+This command sequence will produce `a.o`, `a.elf` intermediate files and `a.bin`
+being the same binary as the `/path/to/file.bin` file, which is tested by `cmp`
+command.
+
+Speaking of the real use case: you can disassemble Sega Mega Drive (Genesis) ROM
+with PC trace table to start hacking it. PC trace table is a text file
+containing one decimal number per line, representing a program counter value
+that it had at least once during the ROM execution. Every number must be unique
+to the file. It may look like this:
+
+```
+512
+518
+520
+526
+528
+532
+536
+540
+544
+548
+...
+```
+
+It may contain thousands of lines ([real example](https://gist.github.com/Oxore/c93a6192314cd6bebfa847350409caf0)).
+I personally got one by playing a game on a specifically modified version of
+`picodrive` for this purpose. I added 4MiB table and made emulator write all
+program counter values in it and then dumped the table into a file using
+`printf` function in `picodrive` C source code. You can do this with you
+favorite open source emulator too.
+
+When PC trace table file is obtained, pass it with option `-t pc-trace.txt`
+alongside with the ROM you were playing off of (`rom.bin`) while gathering the
+trace table.
+
+```
+./cmake-build/m68k-disasm -t pc-trace.txt -o disasm.S rom.bin
+```
+
+Rr better with marks analysis and some fancy raw comments:
+
+```
+./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -fmarks -fabs-marks -frel-marks -t pc-trace.txt -o disasm.S rom.bin
+```
+
+It will produce `disasm.S` which you can modify and assemble as shown in
+previous examples.
+
+To get detailed help you can run:
+
+```
+./cmake-build/m68k-disasm -h`
+```
+
+## Project goals
+
 Goals of this Motorola 68000 disassembler project in this particular repo:
 - Support all Motorola 68000 ISA instructions.
 - Flawless compatibility with GNU AS syntax. It should always emit the code on
@@ -57,6 +154,10 @@ What is **not** the goal (at least not in this repo):
   the same options as per jump instructions. It is possible to implement this
   for all of the rest instructions, but it just has to be done if someone needs
   it.
+- Traced disassembling - you can provide a PC trace table file with option
+  `--pc-trace=file` to disassemble only what is supposed to be instructions and
+  leave all the rest as raw data. Otherwise it will try to disassemble
+  everything.
 
 ### Limitations
 
@@ -72,25 +173,6 @@ What is **not** the goal (at least not in this repo):
 - Labels/marks for locations outside of the code being disassembled are not
   generated, they remain as raw address arguments and/or PC-relative offset
   arguments.
-
-## Build
-
-```
-cmake -B cmake-build -S .
-cmake --build cmake-build
-```
-
-## Usage example
-
-```
-./cmake-build/m68k-disasm -t pc-trace.txt -o disasm.S original.bin
-```
-
-To get detailed help you can run:
-
-```
-./cmake-build/m68k-disasm -h`
-```
 
 ## Meta
 
