@@ -459,7 +459,7 @@ static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings
 
 static bool IsValidFeature(const char *feature)
 {
-    constexpr size_t sizeof_no_prefix = strlen("no-");
+    constexpr size_t sizeof_no_prefix = sizeof("no-")-1;
     if (0 == memcmp(feature, "no-", sizeof_no_prefix)) {
         feature += sizeof_no_prefix;
     }
@@ -484,7 +484,7 @@ static bool IsValidFeature(const char *feature)
 static void ApplyFeature(Settings& s, const char *feature)
 {
     bool disable{};
-    constexpr size_t sizeof_no_prefix = strlen("no-");
+    constexpr size_t sizeof_no_prefix = sizeof("no-")-1;
     if (0 == memcmp(feature, "no-", sizeof_no_prefix)) {
         disable = true;
         feature += sizeof_no_prefix;

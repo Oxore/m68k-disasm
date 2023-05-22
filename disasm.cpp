@@ -738,7 +738,7 @@ static size_t disasm_move_to(
     case AddrMode::kImmediate:
         break;
     }
-    node.op = Op::Typical(OpCode::kMOVE, opsize, src, Arg{reg, 0});
+    node.op = Op::Typical(OpCode::kMOVE, opsize, src, Arg{{reg}, {0}});
     return node.size = kInstructionSizeStepBytes + src.Size(opsize);
 }
 
@@ -1806,8 +1806,8 @@ static size_t snprint_reg_mask(
             const size_t remaining = bufsz - written;
             const int ret = snprintf(buf + written, remaining, "%s%%%c%d", delimiter, regtype, id);
             assert(ret > 0);
-            assert(static_cast<unsigned>(ret) >= strlen("%d0"));
-            assert(static_cast<unsigned>(ret) <= strlen("-%d0"));
+            assert(static_cast<unsigned>(ret) >= sizeof("%d0")-1);
+            assert(static_cast<unsigned>(ret) <= sizeof("-%d0")-1);
             written += Min(remaining, ret);
             first_printed = true;
         }
