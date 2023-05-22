@@ -1930,6 +1930,7 @@ int Arg::SNPrint(
 
 int Op::FPrint(
         FILE *const stream,
+        const char *const indent,
         const RefKindMask ref_kinds,
         const uint32_t self_addr,
         const uint32_t ref1_addr,
@@ -1954,12 +1955,12 @@ int Op::FPrint(
             char arg2_str[kArgsBufferSize]{};
             const RefKindMask ref2_kinds = ref_kinds & (kRef2Mask | kRefPcRelFix2Bytes);
             arg2.SNPrint(arg2_str, kArgsBufferSize, false, ref2_kinds, self_addr, ref2_addr);
-            return fprintf(stream, "  %s %s,%s", mnemonic_str, arg1_str, arg2_str);
+            return fprintf(stream, "%s%s %s,%s", indent, mnemonic_str, arg1_str, arg2_str);
         } else {
-            return fprintf(stream, "  %s %s", mnemonic_str, arg1_str);
+            return fprintf(stream, "%s%s %s", indent, mnemonic_str, arg1_str);
         }
     } else {
-        return fprintf(stream, "  %s", mnemonic_str);
+        return fprintf(stream, "%s%s", indent, mnemonic_str);
     }
 }
 

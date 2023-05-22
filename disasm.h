@@ -353,6 +353,7 @@ struct Op {
     }
     int FPrint(
             FILE *,
+            const char *indent,
             RefKindMask ref_kinds = 0,
             uint32_t self_addr = 0,
             uint32_t ref1_addr = 0,

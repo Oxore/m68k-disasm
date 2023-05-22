@@ -274,7 +274,7 @@ static void RenderDisassembly(
             assert(node->op.opcode != OpCode::kNone);
             if (ShouldPrintAsRaw(node->op)) {
                 auto raw = Op::Raw(GetU16BE(code.buffer + node->offset));
-                raw.FPrint(output);
+                raw.FPrint(output, s.indent);
                 uint32_t i = kInstructionSizeStepBytes;
                 for (; i < node->size; i += kInstructionSizeStepBytes) {
                     char arg_str[kArgsBufferSize]{};
@@ -303,7 +303,7 @@ static void RenderDisassembly(
                          : 0) |
                         ((s.imm_marks && ref1) ? (node->ref_kinds & kRef1ImmMask) : 0) |
                         (node->ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
-                    node->op.FPrint(output, ref_kinds, node->offset, ref1_addr, ref2_addr);
+                    node->op.FPrint(output, s.indent, ref_kinds, node->offset, ref1_addr, ref2_addr);
                     if (s.xrefs_to && ref1) {
                         char ref_addr_str[12]{};
                         snprintf(ref_addr_str, sizeof(ref_addr_str), ".L%08x", ref1_addr);
@@ -315,7 +315,7 @@ static void RenderDisassembly(
                         fprintf(output, " | %s", ref_addr_str);
                     }
                 } else {
-                    node->op.FPrint(output);
+                    node->op.FPrint(output, s.indent);
                 }
             }
             if (s.raw_data_comment) {
@@ -326,7 +326,9 @@ static void RenderDisassembly(
             fprintf(output, "\n");
             i += node->size;
         } else {
-            fprintf(output, "  .short 0x%02x%02x\n", code.buffer[i], code.buffer[i + 1]);
+            auto raw = Op::Raw(GetU16BE(code.buffer + i));
+            raw.FPrint(output, s.indent);
+            fprintf(output, "\n");
             i += kInstructionSizeStepBytes;
         }
     }
@@ -511,6 +513,7 @@ static void PrintUsage(FILE *s, const char *argv0)
     fprintf(s, "  -h, --help,           Show this message\n");
     fprintf(s, "  -o, --output,         Where to write disassembly to (stdout if not set)\n");
     fprintf(s, "  -t, --pc-trace,       File containing PC trace\n");
+    fprintf(s, "      --indent,         Specify instruction indentation, e.g. \"\t\"\n");
     fprintf(s, "  -f, --feature=[no-]<feature>\n");
     fprintf(s, "                        Enable or disable (with \"no-\" prefix) a feature\n");
     fprintf(s, "                        Available features:\n");
@@ -537,6 +540,7 @@ int main(int, char* argv[])
         {"output", 'o', OPTPARSE_REQUIRED},
         {"pc-trace", 't', OPTPARSE_REQUIRED},
         {"feature", 'f', OPTPARSE_OPTIONAL},
+        {"indent", 80, OPTPARSE_REQUIRED},
         {},
     };
     const char *trace_file_name = nullptr;
@@ -565,6 +569,9 @@ int main(int, char* argv[])
                 return EXIT_FAILURE;
             }
             ApplyFeature(s, options.optarg);
+            break;
+        case 80:
+            s.indent = options.optarg;
             break;
         case '?':
             fprintf(stderr, "main: optparse_long: Error: \"%s\"\n", options.errmsg);

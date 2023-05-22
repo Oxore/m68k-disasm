@@ -11,6 +11,7 @@ struct Settings {
     bool xrefs_to{};
     bool xrefs_from{};
     bool raw_data_comment{};
+    const char *indent{"\t"};
 };
 
 using RefKindMask = unsigned;
