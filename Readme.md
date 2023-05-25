@@ -185,7 +185,7 @@ This is free and unencumbered software released into the public domain. See
 This repository includes source code of other projects:
 - Optparse ([gh:skeeto/optparse](https://github.com/skeeto/optparse)) - Unlicense
 
-Resources used to implement the disassember (this set is more than sufficient to
+Resources used to implement the disassembler (this set is more than sufficient to
 support all of M68000 instructions):
 - [The 68000's Instruction Set](http://wpage.unina.it/rcanonic/didattica/ce1/docs/68000.pdf) - Appendix of an unrecognized book. Basically the same information also could be found in [gh:prb28/m68k-instructions-documentation](https://github.com/prb28/m68k-instructions-documentation).
 - [Motorola 68000 CPU Opcodes](http://goldencrystal.free.fr/M68kOpcodes-v2.3.pdf).
