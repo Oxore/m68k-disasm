@@ -1857,11 +1857,11 @@ int Arg::SNPrint(
             const char c = type == ArgType::kLong ? 'l' : 'w';
             if (ref_kinds & kRefAbsMask) {
                 if (static_cast<uint32_t>(lword) == ref_addr) {
-                    return snprintf(buf, bufsz, ".L%08x:%c", ref_addr, c);
+                    return snprintf(buf, bufsz, "L%08x:%c", ref_addr, c);
                 } else {
                     // It has to be AFTER the mark we are gonna reference here
                     assert(static_cast<uint32_t>(lword) > ref_addr);
-                    return snprintf(buf, bufsz, ".L%08x+%d:%c", ref_addr, lword - ref_addr, c);
+                    return snprintf(buf, bufsz, "L%08x+%d:%c", ref_addr, lword - ref_addr, c);
                 }
             } else {
                 return snprintf(buf, bufsz, "0x%x:%c", lword, c);
@@ -1874,10 +1874,10 @@ int Arg::SNPrint(
             const bool has_fix = ref_kinds & kRefPcRelFix2Bytes;
             const uint32_t arg_addr = self_addr + d16_pc.d16 + kInstructionSizeStepBytes + (has_fix ? kInstructionSizeStepBytes : 0);
             if (arg_addr == ref_addr) {
-                return snprintf(buf, bufsz, "%%pc@(.L%08x:w)", ref_addr);
+                return snprintf(buf, bufsz, "%%pc@(L%08x:w)", ref_addr);
             } else {
                 assert(arg_addr > ref_addr);
-                return snprintf(buf, bufsz,  "%%pc@(.L%08x+%d:w)", ref_addr, arg_addr - ref_addr);
+                return snprintf(buf, bufsz,  "%%pc@(L%08x+%d:w)", ref_addr, arg_addr - ref_addr);
             }
         } else {
             return snprintf(buf, bufsz, "%%pc@(%d:w)", d16_pc.d16);
@@ -1892,11 +1892,11 @@ int Arg::SNPrint(
     case ArgType::kImmediate:
         if (ref_kinds & kRef1ImmMask) {
             if (static_cast<uint32_t>(lword) == ref_addr) {
-                return snprintf(buf, bufsz, "#.L%08x", ref_addr);
+                return snprintf(buf, bufsz, "#L%08x", ref_addr);
             } else {
                 // It has to be AFTER the mark we are gonna reference here
                 assert(static_cast<uint32_t>(lword) > ref_addr);
-                return snprintf(buf, bufsz, "#.L%08x+%d", ref_addr, lword - ref_addr);
+                return snprintf(buf, bufsz, "#L%08x+%d", ref_addr, lword - ref_addr);
             }
         } else if (imm_as_hex) {
             return snprintf(buf, bufsz, "#0x%x", lword);
@@ -1909,10 +1909,10 @@ int Arg::SNPrint(
     case ArgType::kDisplacement:
         if (ref_kinds & kRefRelMask) {
             if (static_cast<uint32_t>(self_addr + lword) == ref_addr) {
-                return snprintf(buf, bufsz,  ".L%08x", ref_addr);
+                return snprintf(buf, bufsz,  "L%08x", ref_addr);
             } else {
                 assert(static_cast<uint32_t>(self_addr + lword) > ref_addr);
-                return snprintf(buf, bufsz,  ".L%08x+%d", ref_addr, (self_addr + lword) - ref_addr);
+                return snprintf(buf, bufsz,  "L%08x+%d", ref_addr, (self_addr + lword) - ref_addr);
             }
         } else {
             return snprintf(buf, bufsz,  ".%s%d", lword >= 0 ? "+" : "", lword);

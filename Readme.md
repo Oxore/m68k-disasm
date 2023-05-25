@@ -94,7 +94,7 @@ trace table.
 Or better with marks analysis and some fancy raw comments:
 
 ```
-./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -fmarks -fabs-marks -frel-marks -fimm-marks -t pc-trace.txt -o disasm.S rom.bin
+./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -fmarks -fabs-marks -frel-marks -fexport-marks -fexport-functions -t pc-trace.txt -o disasm.S rom.bin
 ```
 
 It will produce `disasm.S` which you can modify and assemble as shown in

@@ -221,7 +221,7 @@ static size_t RenderRawDataComment(
     return overall_sz;
 }
 
-static const char *ReferenceTypeToString(ReferenceType type)
+static constexpr const char *ReferenceTypeToString(ReferenceType type)
 {
     switch (type) {
     case ReferenceType::kUnknown: return "UNKNOWN";
@@ -246,84 +246,122 @@ static constexpr bool ShouldPrintAsRaw(const Op& op)
     return false;
 }
 
+static constexpr bool HasCallReference(const DisasmNode &node)
+{
+    for (const ReferenceNode *ref{node.ref_by}; ref; ref = ref->next) {
+        for (size_t i = 0; i < ref->refs_count; i++) {
+            if (ref->refs[i].type == ReferenceType::kCall) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static void RenderNodeDisassembly(
+        FILE *const output,
+        const DisasmMap &disasm_map,
+        const DataBuffer &code,
+        const Settings &s,
+        const DisasmNode &node)
+{
+    if (node.ref_by) {
+        if (s.marks) {
+            const bool export_this_function = s.export_functions && HasCallReference(node);
+            const bool export_this_mark = s.export_all_marks ||
+                (s.export_marks && node.ref_by && (node.ref_by->refs_count > 1)) ||
+                export_this_function;
+            if (export_this_mark) {
+                fprintf(output, "\n%s.globl\tL%08x\n", s.indent, node.offset);
+                if (export_this_function) {
+                    fprintf(output, "%s.type\tL%08x, @function\n", s.indent, node.offset);
+                }
+            }
+        }
+        if (s.xrefs_from) {
+            fprintf(output, "| XREFS:\n");
+            for (const ReferenceNode *ref{node.ref_by}; ref; ref = ref->next) {
+                if (ref->refs_count == 0) {
+                    continue;
+                }
+                fprintf(output, "|");
+                for (size_t i = 0; i < ref->refs_count; i++) {
+                    const ReferenceRecord r = ref->refs[i];
+                    fprintf(output, " %s @%08x", ReferenceTypeToString(r.type), r.address);
+                }
+                fprintf(output, "\n");
+            }
+        }
+        if (s.marks) {
+            fprintf(output, "L%08x:\n", node.offset);
+        }
+    }
+    assert(node.op.opcode != OpCode::kNone);
+    if (ShouldPrintAsRaw(node.op)) {
+        auto raw = Op::Raw(GetU16BE(code.buffer + node.offset));
+        raw.FPrint(output, s.indent);
+        uint32_t i = kInstructionSizeStepBytes;
+        for (; i < node.size; i += kInstructionSizeStepBytes) {
+            char arg_str[kArgsBufferSize]{};
+            const auto arg = Arg::Raw(GetU16BE(code.buffer + node.offset + i));
+            arg.SNPrint(arg_str, kArgsBufferSize);
+            fprintf(output, ", %s", arg_str);
+        }
+        fprintf(output, "\n");
+    } else {
+        const bool with_ref = node.ref_kinds && s.marks && (s.abs_marks || s.rel_marks);
+        const auto *ref1 = (node.ref_kinds & kRef1Mask)
+            ? disasm_map.FindNodeByOffset(node.ref1_addr) : nullptr;
+        const auto *ref2 = (node.ref_kinds & kRef2Mask)
+            ? disasm_map.FindNodeByOffset(node.ref2_addr) : nullptr;
+        const uint32_t ref1_addr = (with_ref && ref1) ? ref1->offset : 0;
+        const uint32_t ref2_addr = (with_ref && ref2) ? ref2->offset : 0;
+        if (with_ref && (ref1 || ref2)) {
+            const RefKindMask ref_kinds =
+                (s.abs_marks
+                 ? ((ref1 ? (node.ref_kinds & kRef1AbsMask) : 0) |
+                     (ref2 ? (node.ref_kinds & kRef2AbsMask) : 0))
+                 : 0) |
+                (s.rel_marks
+                 ? ((ref1 ? (node.ref_kinds & kRef1RelMask) : 0) |
+                     (ref2 ? (node.ref_kinds & kRef2RelMask) : 0))
+                 : 0) |
+                ((s.imm_marks && ref1) ? (node.ref_kinds & kRef1ImmMask) : 0) |
+                (node.ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
+            node.op.FPrint(output, s.indent, ref_kinds, node.offset, ref1_addr, ref2_addr);
+            if (s.xrefs_to && ref1) {
+                char ref_addr_str[12]{};
+                snprintf(ref_addr_str, (sizeof ref_addr_str), "L%08x", ref1_addr);
+                fprintf(output, " | %s", ref_addr_str);
+            }
+            if (s.xrefs_to && ref2) {
+                char ref_addr_str[12]{};
+                snprintf(ref_addr_str, (sizeof ref_addr_str), "L%08x", ref2_addr);
+                fprintf(output, " | %s", ref_addr_str);
+            }
+        } else {
+            node.op.FPrint(output, s.indent);
+        }
+    }
+    if (s.raw_data_comment) {
+        char raw_data_comment[100]{};
+        RenderRawDataComment(
+                raw_data_comment,
+                (sizeof raw_data_comment) - 1,
+                node.offset,
+                node.size, code);
+        fprintf(output, " |%s", raw_data_comment);
+    }
+    fprintf(output, "\n");
+}
+
 static void RenderDisassembly(
-        FILE *output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &s)
+        FILE *const output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &s)
 {
     for (size_t i = 0; i < code.occupied_size;) {
         const DisasmNode *node = disasm_map.FindNodeByOffset(i);
         if (node) {
-            if (node->ref_by) {
-                if (s.xrefs_from) {
-                    fprintf(output, "| XREFS:\n");
-                    for (ReferenceNode *ref{node->ref_by}; ref; ref = ref->next) {
-                        if (ref->refs_count == 0) {
-                            continue;
-                        }
-                        fprintf(output, "|");
-                        for (size_t i = 0; i < ref->refs_count; i++) {
-                            const ReferenceRecord r = ref->refs[i];
-                            fprintf(output, " %s @%08x", ReferenceTypeToString(r.type), r.address);
-                        }
-                        fprintf(output, "\n");
-                    }
-                }
-                if (s.marks) {
-                    fprintf(output, ".L%08x:\n", node->offset);
-                }
-            }
-            assert(node->op.opcode != OpCode::kNone);
-            if (ShouldPrintAsRaw(node->op)) {
-                auto raw = Op::Raw(GetU16BE(code.buffer + node->offset));
-                raw.FPrint(output, s.indent);
-                uint32_t i = kInstructionSizeStepBytes;
-                for (; i < node->size; i += kInstructionSizeStepBytes) {
-                    char arg_str[kArgsBufferSize]{};
-                    const auto arg = Arg::Raw(GetU16BE(code.buffer + node->offset + i));
-                    arg.SNPrint(arg_str, kArgsBufferSize);
-                    fprintf(output, ", %s", arg_str);
-                }
-                fprintf(output, "\n");
-            } else {
-                const bool with_ref = node->ref_kinds && s.marks && (s.abs_marks || s.rel_marks);
-                const auto *ref1 = (node->ref_kinds & kRef1Mask)
-                    ? disasm_map.FindNodeByOffset(node->ref1_addr) : nullptr;
-                const auto *ref2 = (node->ref_kinds & kRef2Mask)
-                    ? disasm_map.FindNodeByOffset(node->ref2_addr) : nullptr;
-                const uint32_t ref1_addr = (with_ref && ref1) ? ref1->offset : 0;
-                const uint32_t ref2_addr = (with_ref && ref2) ? ref2->offset : 0;
-                if (with_ref && (ref1 || ref2)) {
-                    const RefKindMask ref_kinds =
-                        (s.abs_marks
-                         ? ((ref1 ? (node->ref_kinds & kRef1AbsMask) : 0) |
-                             (ref2 ? (node->ref_kinds & kRef2AbsMask) : 0))
-                         : 0) |
-                        (s.rel_marks
-                         ? ((ref1 ? (node->ref_kinds & kRef1RelMask) : 0) |
-                             (ref2 ? (node->ref_kinds & kRef2RelMask) : 0))
-                         : 0) |
-                        ((s.imm_marks && ref1) ? (node->ref_kinds & kRef1ImmMask) : 0) |
-                        (node->ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
-                    node->op.FPrint(output, s.indent, ref_kinds, node->offset, ref1_addr, ref2_addr);
-                    if (s.xrefs_to && ref1) {
-                        char ref_addr_str[12]{};
-                        snprintf(ref_addr_str, sizeof(ref_addr_str), ".L%08x", ref1_addr);
-                        fprintf(output, " | %s", ref_addr_str);
-                    }
-                    if (s.xrefs_to && ref2) {
-                        char ref_addr_str[12]{};
-                        snprintf(ref_addr_str, sizeof(ref_addr_str), ".L%08x", ref2_addr);
-                        fprintf(output, " | %s", ref_addr_str);
-                    }
-                } else {
-                    node->op.FPrint(output, s.indent);
-                }
-            }
-            if (s.raw_data_comment) {
-                char raw_data_comment[100]{};
-                RenderRawDataComment(raw_data_comment, sizeof(raw_data_comment) - 1, node->offset, node->size, code);
-                fprintf(output, " |%s", raw_data_comment);
-            }
-            fprintf(output, "\n");
+            RenderNodeDisassembly(output, disasm_map, code, s, *node);
             i += node->size;
         } else {
             auto raw = Op::Raw(GetU16BE(code.buffer + i));
@@ -428,7 +466,7 @@ static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trac
     // Print output into output_stream
     RenderDisassembly(output_stream, *disasm_map, code, s);
     delete disasm_map;
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings &s)
@@ -454,7 +492,7 @@ static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings
     // Print output into output_stream
     RenderDisassembly(output_stream, *disasm_map, code, s);
     delete disasm_map;
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 static bool IsValidFeature(const char *feature)
@@ -473,6 +511,12 @@ static bool IsValidFeature(const char *feature)
         return true;
     } else if (0 == strcmp(feature, "imm-marks")) {
         return true;
+    } else if (0 == strcmp(feature, "export-marks")) {
+        return true;
+    } else if (0 == strcmp(feature, "export-all-marks")) {
+        return true;
+    } else if (0 == strcmp(feature, "export-functions")) {
+        return true;
     } else if (0 == strcmp(feature, "xrefs-from")) {
         return true;
     } else if (0 == strcmp(feature, "xrefs-to")) {
@@ -481,14 +525,11 @@ static bool IsValidFeature(const char *feature)
     return false;
 }
 
-static void ApplyFeature(Settings& s, const char *feature)
+static void ApplyFeature(Settings& s, const char *feature_arg)
 {
-    bool disable{};
-    constexpr size_t sizeof_no_prefix = sizeof("no-")-1;
-    if (0 == memcmp(feature, "no-", sizeof_no_prefix)) {
-        disable = true;
-        feature += sizeof_no_prefix;
-    }
+    constexpr size_t sizeof_no_prefix = (sizeof "no-") - 1;
+    const bool disable = (0 == memcmp(feature_arg, "no-", sizeof_no_prefix));
+    const char *const feature = feature_arg + (disable ? sizeof_no_prefix : 0);
     if (0 == strcmp(feature, "rdc")) {
         s.raw_data_comment = !disable;
     } else if (0 == strcmp(feature, "marks")) {
@@ -499,6 +540,12 @@ static void ApplyFeature(Settings& s, const char *feature)
         s.abs_marks = !disable;
     } else if (0 == strcmp(feature, "imm-marks")) {
         s.imm_marks = !disable;
+    } else if (0 == strcmp(feature, "export-marks")) {
+        s.export_marks = !disable;
+    } else if (0 == strcmp(feature, "export-all-marks")) {
+        s.export_all_marks = !disable;
+    } else if (0 == strcmp(feature, "export-functions")) {
+        s.export_functions = !disable;
     } else if (0 == strcmp(feature, "xrefs-from")) {
         s.xrefs_from = !disable;
     } else if (0 == strcmp(feature, "xrefs-to")) {
@@ -508,29 +555,34 @@ static void ApplyFeature(Settings& s, const char *feature)
 
 static void PrintUsage(FILE *s, const char *argv0)
 {
+    // Please, keep all lines in 80 columns range when printed.
     fprintf(s, "Usage: %s [options] [<input-file-name>]\n", argv0);
     fprintf(s, "Options:\n");
-    fprintf(s, "  -h, --help,           Show this message\n");
+    fprintf(s, "  -h, --help,           Show this message.\n");
     fprintf(s, "  -o, --output,         Where to write disassembly to (stdout if not set)\n");
     fprintf(s, "  -t, --pc-trace,       File containing PC trace\n");
-    fprintf(s, "      --indent,         Specify instruction indentation, e.g. \"\t\"\n");
+    fprintf(s, "      --indent,         Specify instruction indentation, e.g. \"\t\",\n");
+    fprintf(s, "                        Single tab is used by default.\n");
     fprintf(s, "  -f, --feature=[no-]<feature>\n");
-    fprintf(s, "                        Enable or disable (with \"no-\" prefix) a feature\n");
-    fprintf(s, "                        Available features:\n");
-    fprintf(s, "                        rdc         print raw data comment\n");
-    fprintf(s, "                        marks       print marks above all places that have jumps\n");
-    fprintf(s, "                                    from somewhere\n");
-    fprintf(s, "                        rel-marks   use mark instead of number on relative\n");
-    fprintf(s, "                                    branch or call\n");
-    fprintf(s, "                        abs-marks   use mark instead of number on absolute\n");
-    fprintf(s, "                                    branch or call\n");
-    fprintf(s, "                        imm-marks   use mark instead of number when immediate\n");
-    fprintf(s, "                                    value moved to address register\n");
-    fprintf(s, "                        xrefs-from  print xrefs comments above all places that\n");
-    fprintf(s, "                                    have xrefs\n");
-    fprintf(s, "                        xrefs-to    print xrefs comments after all branch \n");
-    fprintf(s, "                                    instructions\n");
+    fprintf(s, "                        Enable or disable (with \"no-\" prefix) a feature.\n");
+    fprintf(s, "                        Available features described below under the\n");
+    fprintf(s, "                        \"Feature flags\" mark.\n");
     fprintf(s, "  <input_file_name>     Binary file with machine code (stdin if not set)\n");
+    fprintf(s, "Feature flags:\n");
+    fprintf(s, "  rdc                   Print raw data comment.\n");
+    fprintf(s, "  marks                 Print marks above all places that have jumps from\n");
+    fprintf(s, "                        somewhere.\n");
+    fprintf(s, "  rel-marks             Use mark instead of number on relative branch or call.\n");
+    fprintf(s, "  abs-marks             Use mark instead of number on absolute branch or call.\n");
+    fprintf(s, "  imm-marks             Use mark instead of number when immediate value moved to\n");
+    fprintf(s, "                        address register.\n");
+    fprintf(s, "  export-marks          Add `.globl` preamble to marks referenced two or more\n");
+    fprintf(s, "                        times.\n");
+    fprintf(s, "  export-all-marks      Add `.globl` preamble to all marks.\n");
+    fprintf(s, "  export-functions      Add `.globl` and `.type @funciton` preamble to marks\n");
+    fprintf(s, "                        referenced as call.\n");
+    fprintf(s, "  xrefs-from            Print xrefs comments above all places that have xrefs.\n");
+    fprintf(s, "  xrefs-to              Print xrefs comments after all branch instructions.\n");
 }
 
 int main(int, char* argv[])

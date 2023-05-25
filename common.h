@@ -8,6 +8,9 @@ struct Settings {
     bool rel_marks{};
     bool abs_marks{};
     bool imm_marks{};
+    bool export_marks{};
+    bool export_all_marks{};
+    bool export_functions{};
     bool xrefs_to{};
     bool xrefs_from{};
     bool raw_data_comment{};
