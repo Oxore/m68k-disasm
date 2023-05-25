@@ -7,7 +7,7 @@ that GNU AS will translate into the same original machine code. It's only use
 case for now is Sega Mega Drive / Genesis ROM hacking. I failed to find any way
 to disassemble SMD ROMs in such a way that it would be possible to assemble it
 back with GNU AS. All disassemblers I tried produce either syntactically
-incompatible asembly listing, or it is not the same as original binary after
+incompatible assembly listing, or it is not the same as original binary after
 translation into machine code. So I decided to build my own disassembler, that
 will do exactly what I need with full control over the process and maybe more.
 
@@ -38,7 +38,7 @@ can do it like this:
 ./cmake-build/m68k-disasm -o disasm.S /path/to/file.bin
 ```
 
-This command will produce `disasm.S` file, that contains disassembly listing.
+This command will produce `disasm.S` file, that contains assembly listing.
 
 You may assemble it back with `m68k-none-elf-as` to see if it is valid asm code
 with the following command sequence. Note that you need to obtain or build by
@@ -185,9 +185,12 @@ This is free and unencumbered software released into the public domain. See
 This repository includes source code of other projects:
 - Optparse ([gh:skeeto/optparse](https://github.com/skeeto/optparse)) - Unlicense
 
-Resources used to implement the disassembler (this set is more than sufficient to
-support all of M68000 instructions):
-- [The 68000's Instruction Set](http://wpage.unina.it/rcanonic/didattica/ce1/docs/68000.pdf) - Appendix of an unrecognized book. Basically the same information also could be found in [gh:prb28/m68k-instructions-documentation](https://github.com/prb28/m68k-instructions-documentation).
+Resources used to implement the disassembler (this set is more than sufficient
+to support all of M68000 instructions):
+- [The 68000's Instruction Set](http://wpage.unina.it/rcanonic/didattica/ce1/docs/68000.pdf) -
+  Appendix of an unrecognized book. Basically the same information also could be
+  found in
+  [gh:prb28/m68k-instructions-documentation](https://github.com/prb28/m68k-instructions-documentation).
 - [Motorola 68000 CPU Opcodes](http://goldencrystal.free.fr/M68kOpcodes-v2.3.pdf).
 - GNU assembler (GNU Binutils) 2.40 (`m68k-none-elf-as`).
 - GNU objdump (GNU Binutils) 2.40 (`m68k-none-elf-objdump`).
