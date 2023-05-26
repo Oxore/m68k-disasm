@@ -91,10 +91,10 @@ trace table.
 ./cmake-build/m68k-disasm -t pc-trace.txt -o disasm.S rom.bin
 ```
 
-Or better with marks analysis and some fancy raw comments:
+Or better with labeled locations analysis and some fancy raw comments:
 
 ```
-./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -fmarks -fabs-marks -frel-marks -fexport-marks -fexport-functions -t pc-trace.txt -o disasm.S rom.bin
+./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -flabels -fabs-labels -frel-labels -fexport-labels -fexport-functions -t pc-trace.txt -o disasm.S rom.bin
 ```
 
 It will produce `disasm.S` which you can modify and assemble as shown in
@@ -116,8 +116,8 @@ Goals of this Motorola 68000 disassembler project in this particular repo:
 - Support PC trace tables. With trace tables it will disassemble traced PC
   locations only, without attempt to disassemble everything, because not
   everything is instruction, some code is just data.
-- Mark jump locations and bind jumps and calls to them. Mark obvious ROM read
-  accessed locations and bind the instructions to the marked locations. To make
+- Label jump locations and bind jumps and calls to them. Label obvious ROM read
+  accessed locations and bind the instructions to the labeled locations. To make
   it possible to split and reorganize the binary.
 
 What could become a goal (possible features):
@@ -146,10 +146,10 @@ What is **not** the goal (at least not in this repo):
 - It generates GNU AS compatible listing, that may be translated back to machine
   code using `m68k-none-elf-as` in the way that it matches original binary file,
   no matter what.
-- It generates labels (marks) for all jump instructions (JSR, JMP, BRA, Bcc and
-  DBcc) if jump location is inside the code being disassembled. This feature can
-  be enabled with `-fmarks`, `-frel-marks` and `-fabs-marks` options, all at
-  once. It also generates marks for some data accessing instructions (namely:
+- It generates labels for all jump instructions (JSR, JMP, BRA, Bcc and DBcc) if
+  jump location is inside the code being disassembled. This feature can be
+  enabled with `-flabels`, `-frel-labels` and `-fabs-labels` options, all at
+  once. It also generates labels for some data accessing instructions (namely:
   NBCD, PEA, LEA, CMP, SUB, ADD, MOVEM and MOVE) and this behavior enabled with
   the same options as per jump instructions. It is possible to implement this
   for all of the rest instructions, but it just has to be done if someone needs
@@ -170,9 +170,8 @@ What is **not** the goal (at least not in this repo):
   variations.
 - Base address is always assumed to be `0x00000000`.
 - Maximum binary size is 4MiB.
-- Labels/marks for locations outside of the code being disassembled are not
-  generated, they remain as raw address arguments and/or PC-relative offset
-  arguments.
+- Labels for locations outside of the code being disassembled are not generated,
+  they remain as raw address arguments and/or PC-relative offset arguments.
 
 ## Meta
 

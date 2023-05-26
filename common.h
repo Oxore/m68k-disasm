@@ -4,12 +4,12 @@
 #pragma once
 
 struct Settings {
-    bool marks{};
-    bool rel_marks{};
-    bool abs_marks{};
-    bool imm_marks{};
-    bool export_marks{};
-    bool export_all_marks{};
+    bool labels{};
+    bool rel_labels{};
+    bool abs_labels{};
+    bool imm_labels{};
+    bool export_labels{};
+    bool export_all_labels{};
     bool export_functions{};
     bool xrefs_to{};
     bool xrefs_from{};
@@ -30,9 +30,10 @@ constexpr RefKindMask kRef2WriteMask = (1 << 7); // For second argument
 /// Indicates whether instruction is a call or just a branch, for any argument.
 /// Calls are BSR and JSR, branches are DBcc, Bcc and JMP.
 constexpr RefKindMask kRefCallMask = (1 << 8);
-/// Hack flag for MOVEM with PC relative value when -frel-marks is set
+/// Hack flag for MOVEM with PC relative value when -frel-labels is set
 constexpr RefKindMask kRefPcRelFix2Bytes = (1 << 9);
-/// Register 1 may have immediate moving to address register which may be a mark
+/// Register 1 may have immediate moving to address register which may be a
+/// labeled location
 constexpr RefKindMask kRef1ImmMask = (1 << 10);
 /// Everything for first argument
 constexpr RefKindMask kRef1Mask = kRef1RelMask | kRef1AbsMask | kRef1ReadMask | kRef1WriteMask | kRef1ImmMask;

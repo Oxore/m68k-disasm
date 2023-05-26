@@ -274,8 +274,8 @@ static size_t disasm_ext_movem(
             return disasm_verbatim(node, instr);
         } else if (a.mode == AddrMode::kD16PCAddr) {
             // XXX: kRefPcRelFix2Bytes flag is a hack that needed to correctly
-            // print PC relative mark referenced value for MOVEM. Alongside with
-            // *NOT* adding kInstructionSizeStepBytes to ref1_addr. Still
+            // print label for PC relative referenced value of MOVEM. Alongside
+            // with *NOT* adding kInstructionSizeStepBytes to ref1_addr. Still
             // figuring that out.
             node.ref1_addr = node.offset + kInstructionSizeStepBytes * 2 +
                 static_cast<uint32_t>(a.d16_pc.d16);
@@ -1859,7 +1859,7 @@ int Arg::SNPrint(
                 if (static_cast<uint32_t>(lword) == ref_addr) {
                     return snprintf(buf, bufsz, "L%08x:%c", ref_addr, c);
                 } else {
-                    // It has to be AFTER the mark we are gonna reference here
+                    // It has to be AFTER the label we are gonna reference here
                     assert(static_cast<uint32_t>(lword) > ref_addr);
                     return snprintf(buf, bufsz, "L%08x+%d:%c", ref_addr, lword - ref_addr, c);
                 }
@@ -1894,7 +1894,7 @@ int Arg::SNPrint(
             if (static_cast<uint32_t>(lword) == ref_addr) {
                 return snprintf(buf, bufsz, "#L%08x", ref_addr);
             } else {
-                // It has to be AFTER the mark we are gonna reference here
+                // It has to be AFTER the label we are gonna reference here
                 assert(static_cast<uint32_t>(lword) > ref_addr);
                 return snprintf(buf, bufsz, "#L%08x+%d", ref_addr, lword - ref_addr);
             }

@@ -266,12 +266,12 @@ static void RenderNodeDisassembly(
         const DisasmNode &node)
 {
     if (node.ref_by) {
-        if (s.marks) {
+        if (s.labels) {
             const bool export_this_function = s.export_functions && HasCallReference(node);
-            const bool export_this_mark = s.export_all_marks ||
-                (s.export_marks && node.ref_by && (node.ref_by->refs_count > 1)) ||
+            const bool export_this_label = s.export_all_labels ||
+                (s.export_labels && node.ref_by && (node.ref_by->refs_count > 1)) ||
                 export_this_function;
-            if (export_this_mark) {
+            if (export_this_label) {
                 fprintf(output, "\n%s.globl\tL%08x\n", s.indent, node.offset);
                 if (export_this_function) {
                     fprintf(output, "%s.type\tL%08x, @function\n", s.indent, node.offset);
@@ -292,7 +292,7 @@ static void RenderNodeDisassembly(
                 fprintf(output, "\n");
             }
         }
-        if (s.marks) {
+        if (s.labels) {
             fprintf(output, "L%08x:\n", node.offset);
         }
     }
@@ -309,7 +309,7 @@ static void RenderNodeDisassembly(
         }
         fprintf(output, "\n");
     } else {
-        const bool with_ref = node.ref_kinds && s.marks && (s.abs_marks || s.rel_marks);
+        const bool with_ref = node.ref_kinds && s.labels && (s.abs_labels || s.rel_labels);
         const auto *ref1 = (node.ref_kinds & kRef1Mask)
             ? disasm_map.FindNodeByOffset(node.ref1_addr) : nullptr;
         const auto *ref2 = (node.ref_kinds & kRef2Mask)
@@ -318,15 +318,15 @@ static void RenderNodeDisassembly(
         const uint32_t ref2_addr = (with_ref && ref2) ? ref2->offset : 0;
         if (with_ref && (ref1 || ref2)) {
             const RefKindMask ref_kinds =
-                (s.abs_marks
+                (s.abs_labels
                  ? ((ref1 ? (node.ref_kinds & kRef1AbsMask) : 0) |
                      (ref2 ? (node.ref_kinds & kRef2AbsMask) : 0))
                  : 0) |
-                (s.rel_marks
+                (s.rel_labels
                  ? ((ref1 ? (node.ref_kinds & kRef1RelMask) : 0) |
                      (ref2 ? (node.ref_kinds & kRef2RelMask) : 0))
                  : 0) |
-                ((s.imm_marks && ref1) ? (node.ref_kinds & kRef1ImmMask) : 0) |
+                ((s.imm_labels && ref1) ? (node.ref_kinds & kRef1ImmMask) : 0) |
                 (node.ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
             node.op.FPrint(output, s.indent, ref_kinds, node.offset, ref1_addr, ref2_addr);
             if (s.xrefs_to && ref1) {
@@ -503,17 +503,17 @@ static bool IsValidFeature(const char *feature)
     }
     if (0 == strcmp(feature, "rdc")) {
         return true;
-    } else if (0 == strcmp(feature, "marks")) {
+    } else if (0 == strcmp(feature, "labels")) {
         return true;
-    } else if (0 == strcmp(feature, "rel-marks")) {
+    } else if (0 == strcmp(feature, "rel-labels")) {
         return true;
-    } else if (0 == strcmp(feature, "abs-marks")) {
+    } else if (0 == strcmp(feature, "abs-labels")) {
         return true;
-    } else if (0 == strcmp(feature, "imm-marks")) {
+    } else if (0 == strcmp(feature, "imm-labels")) {
         return true;
-    } else if (0 == strcmp(feature, "export-marks")) {
+    } else if (0 == strcmp(feature, "export-labels")) {
         return true;
-    } else if (0 == strcmp(feature, "export-all-marks")) {
+    } else if (0 == strcmp(feature, "export-all-labels")) {
         return true;
     } else if (0 == strcmp(feature, "export-functions")) {
         return true;
@@ -532,18 +532,18 @@ static void ApplyFeature(Settings& s, const char *feature_arg)
     const char *const feature = feature_arg + (disable ? sizeof_no_prefix : 0);
     if (0 == strcmp(feature, "rdc")) {
         s.raw_data_comment = !disable;
-    } else if (0 == strcmp(feature, "marks")) {
-        s.marks = !disable;
-    } else if (0 == strcmp(feature, "rel-marks")) {
-        s.rel_marks = !disable;
-    } else if (0 == strcmp(feature, "abs-marks")) {
-        s.abs_marks = !disable;
-    } else if (0 == strcmp(feature, "imm-marks")) {
-        s.imm_marks = !disable;
-    } else if (0 == strcmp(feature, "export-marks")) {
-        s.export_marks = !disable;
-    } else if (0 == strcmp(feature, "export-all-marks")) {
-        s.export_all_marks = !disable;
+    } else if (0 == strcmp(feature, "labels")) {
+        s.labels = !disable;
+    } else if (0 == strcmp(feature, "rel-labels")) {
+        s.rel_labels = !disable;
+    } else if (0 == strcmp(feature, "abs-labels")) {
+        s.abs_labels = !disable;
+    } else if (0 == strcmp(feature, "imm-labels")) {
+        s.imm_labels = !disable;
+    } else if (0 == strcmp(feature, "export-labels")) {
+        s.export_labels = !disable;
+    } else if (0 == strcmp(feature, "export-all-labels")) {
+        s.export_all_labels = !disable;
     } else if (0 == strcmp(feature, "export-functions")) {
         s.export_functions = !disable;
     } else if (0 == strcmp(feature, "xrefs-from")) {
@@ -566,21 +566,21 @@ static void PrintUsage(FILE *s, const char *argv0)
     fprintf(s, "  -f, --feature=[no-]<feature>\n");
     fprintf(s, "                        Enable or disable (with \"no-\" prefix) a feature.\n");
     fprintf(s, "                        Available features described below under the\n");
-    fprintf(s, "                        \"Feature flags\" mark.\n");
+    fprintf(s, "                        \"Feature flags\" section.\n");
     fprintf(s, "  <input_file_name>     Binary file with machine code (stdin if not set)\n");
     fprintf(s, "Feature flags:\n");
     fprintf(s, "  rdc                   Print raw data comment.\n");
-    fprintf(s, "  marks                 Print marks above all places that have jumps from\n");
+    fprintf(s, "  labels                Print labels above all places that have jumps from\n");
     fprintf(s, "                        somewhere.\n");
-    fprintf(s, "  rel-marks             Use mark instead of number on relative branch or call.\n");
-    fprintf(s, "  abs-marks             Use mark instead of number on absolute branch or call.\n");
-    fprintf(s, "  imm-marks             Use mark instead of number when immediate value moved to\n");
-    fprintf(s, "                        address register.\n");
-    fprintf(s, "  export-marks          Add `.globl` preamble to marks referenced two or more\n");
+    fprintf(s, "  rel-labels            Use label instead of number on relative branch or call.\n");
+    fprintf(s, "  abs-labels            Use label instead of number on absolute branch or call.\n");
+    fprintf(s, "  imm-labels            Use label instead of number when immediate value moved\n");
+    fprintf(s, "                        to address register.\n");
+    fprintf(s, "  export-labels         Add `.globl` preamble to labels referenced two or more\n");
     fprintf(s, "                        times.\n");
-    fprintf(s, "  export-all-marks      Add `.globl` preamble to all marks.\n");
-    fprintf(s, "  export-functions      Add `.globl` and `.type @funciton` preamble to marks\n");
-    fprintf(s, "                        referenced as call.\n");
+    fprintf(s, "  export-all-labels     Add `.globl` preamble to all labels.\n");
+    fprintf(s, "  export-functions      Add `.globl` and `.type @funciton` preamble to a label\n");
+    fprintf(s, "                        referenced as a call.\n");
     fprintf(s, "  xrefs-from            Print xrefs comments above all places that have xrefs.\n");
     fprintf(s, "  xrefs-to              Print xrefs comments after all branch instructions.\n");
 }

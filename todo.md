@@ -1,14 +1,5 @@
 # TODO
 
-- Automatically export functions, i.e. all marks with CALL xref have to have the
-  following preamble:
-
-```
-
-  .global L000015de
-  .type	L000015de, @function
-```
-
 - Implement CLI option that can be used to specify regions of RAM and IO
   registers. Custom ROM location and size is still not the case, only 4MiB at
   the base `0x00000000` is supported and it remains.

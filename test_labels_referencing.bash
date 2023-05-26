@@ -8,7 +8,7 @@ AS=m68k-none-elf-as
 OBJCOPY=m68k-none-elf-objcopy
 LD="m68k-none-elf-ld -Ttest.ld"
 DISASM="./cmake-build/m68k-disasm"
-TEST_DIR=/tmp/m68k-disasm-tests-marks-referencing
+TEST_DIR=/tmp/m68k-disasm-tests-labels-referencing
 
 set -e
 CRED="\033[31m"
@@ -70,15 +70,15 @@ run_check_r() {
 }
 
 run_test_rdisp() {
-  run_test_r "$1" "$2" "-fmarks -frel-marks" run_check_rdisp
+  run_test_r "$1" "$2" "-flabels -frel-labels" run_check_rdisp
 }
 
 run_test_rword() {
-  run_test_r "$1" "$2" "-fmarks -fabs-marks" run_check_r
+  run_test_r "$1" "$2" "-flabels -fabs-labels" run_check_r
 }
 
 run_test_rpcrel() {
-  run_test_r "$1" "$2" "-fmarks -frel-marks" run_check_r
+  run_test_r "$1" "$2" "-flabels -frel-labels" run_check_r
 }
 
 run_test_rdisp "bras ." "\x60\xfe"
