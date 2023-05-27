@@ -49,7 +49,7 @@ run_test_r() {
   fi
   local run_check=$4
   $run_check
-  echo && cat ${file_asm}
+  #echo && cat ${file_asm}
   echo -e "${CGREEN}OK${CRST}"
 }
 
@@ -69,6 +69,8 @@ run_check_r() {
   fi
 }
 
+run_check_dummy() { :; }
+
 run_test_rdisp() {
   run_test_r "$1" "$2" "-flabels -frel-labels" run_check_rdisp
 }
@@ -79,6 +81,10 @@ run_test_rword() {
 
 run_test_rpcrel() {
   run_test_r "$1" "$2" "-flabels -frel-labels" run_check_r
+}
+
+run_test_rlocal() {
+  run_test_r "$1" "$2" "-flabels -frel-labels -fabs-labels -fshort-ref-local-labels" run_check_dummy
 }
 
 run_test_rdisp "bras ." "\x60\xfe"
@@ -100,3 +106,5 @@ run_test_rword "cmpl 0x4:w, D2 with nop" "\xb4\xb8\x00\x04\x4e\x71"
 run_test_rword "cmpw 0x0:l, D2" "\xb4\x79\x00\x00\x00\x00"
 run_test_rpcrel "cmpl (0,PC), D2" "\xb4\xba\x00\x00"
 run_test_rpcrel "cmpl (-2,PC), D2" "\xb4\xba\xff\xfe"
+run_test_rlocal "bras 1f; nop; 1: bras 1b" "\x60\x02\x4e\x71\x60\xfe"
+run_test_rlocal "2: bras 1f; nop; 1: bras 2b" "\x60\x02\x4e\x71\x60\xfa"

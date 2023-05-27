@@ -26,7 +26,7 @@ enum class DisasmMapType {
 class DisasmMap {
     const DisasmMapType _type;
     DisasmNode *_map[kDisasmMapSizeElements]{};
-    DisasmNode *findNodeByOffset(uint32_t offset) const;
+    constexpr DisasmNode *findNodeByOffset(uint32_t offset) const;
     DisasmNode *insertTracedNode(uint32_t offset, TracedNodeType);
     void insertReferencedBy(
             const uint32_t by_addr,
@@ -36,7 +36,7 @@ class DisasmMap {
             const ReferenceType ref_type);
     bool canBeAllocated(const DisasmNode& node) const;
 public:
-    const DisasmNode *FindNodeByOffset(uint32_t offset) const
+    constexpr const DisasmNode *FindNodeByOffset(uint32_t offset) const
     {
         return findNodeByOffset(offset);
     };
@@ -52,7 +52,7 @@ public:
     ~DisasmMap();
 };
 
-DisasmNode *DisasmMap::findNodeByOffset(uint32_t offset) const
+constexpr DisasmNode *DisasmMap::findNodeByOffset(uint32_t offset) const
 {
     if (offset < kRomSizeBytes)
         return _map[offset / kInstructionSizeStepBytes];
@@ -258,6 +258,63 @@ static constexpr bool HasCallReference(const DisasmNode &node)
     return false;
 }
 
+static constexpr size_t GetNodeSizeByAddress(const DisasmMap &disasm_map, const uint32_t address)
+{
+    const auto *node = disasm_map.FindNodeByOffset(address);
+    if (node == nullptr) {
+        return kInstructionSizeStepBytes;
+    }
+    return node->size;
+}
+
+static constexpr bool IsLocalLocation(const DisasmMap &disasm_map, const DisasmNode &node)
+{
+    for (const ReferenceNode *ref{node.ref_by}; ref; ref = ref->next) {
+        for (size_t i = 0; i < ref->refs_count; i++) {
+            const ReferenceRecord &ref_rec = ref->refs[i];
+            if (ref_rec.type == ReferenceType::kCall) {
+                // Locals are definitely not made for calls
+                return false;
+            }
+            const bool forward = ref_rec.address < node.offset;
+            const size_t min_addr = forward ? ref_rec.address : node.offset;
+            const size_t start = min_addr + GetNodeSizeByAddress(disasm_map, min_addr);
+            const size_t max_addr = forward ? node.offset : ref_rec.address;
+            const size_t end = max_addr + (forward ? 0 : GetNodeSizeByAddress(disasm_map, min_addr));
+            for (size_t o = start; o < end;) {
+                const auto *intermediate_node = disasm_map.FindNodeByOffset(o);
+                if (intermediate_node) {
+                    if (intermediate_node->ref_by) {
+                        // Another labeled node detected on the jump path, hence
+                        // current node's location cannot be considered local
+                        return false;
+                    }
+                    o += intermediate_node->size;
+                } else {
+                    o += kInstructionSizeStepBytes;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+static constexpr const char *StringWihoutFristNChars(const char *str, const size_t n)
+{
+    for (size_t i = 0, tab = 0; i < n && *str; i++, str++) {
+        if (*str == '\t') {
+            tab++;
+            if (tab == 7) {
+                tab = 0;
+                str++;
+            }
+        } else {
+            str++;
+        }
+    }
+    return str;
+}
+
 static void RenderNodeDisassembly(
         FILE *const output,
         const DisasmMap &disasm_map,
@@ -266,7 +323,8 @@ static void RenderNodeDisassembly(
         const DisasmNode &node)
 {
     if (node.ref_by) {
-        if (s.labels) {
+        const bool is_local = IsLocalLocation(disasm_map, node);
+        if (s.labels && !(s.short_ref_local_labels && is_local)) {
             const bool export_this_function = s.export_functions && HasCallReference(node);
             const bool export_this_label = s.export_all_labels ||
                 (s.export_labels && node.ref_by && (node.ref_by->refs_count > 1)) ||
@@ -278,7 +336,7 @@ static void RenderNodeDisassembly(
                 }
             }
         }
-        if (s.xrefs_from) {
+        if (s.xrefs_from && !(s.short_ref_local_labels && is_local)) {
             fprintf(output, "| XREFS:\n");
             for (const ReferenceNode *ref{node.ref_by}; ref; ref = ref->next) {
                 if (ref->refs_count == 0) {
@@ -293,7 +351,11 @@ static void RenderNodeDisassembly(
             }
         }
         if (s.labels) {
-            fprintf(output, "L%08x:\n", node.offset);
+            if (s.short_ref_local_labels && is_local) {
+                fprintf(output, "1:%s", StringWihoutFristNChars(s.indent, (sizeof "1:") - 1));
+            } else {
+                fprintf(output, "L%08x:\n", node.offset);
+            }
         }
     }
     assert(node.op.opcode != OpCode::kNone);
@@ -328,16 +390,40 @@ static void RenderNodeDisassembly(
                  : 0) |
                 ((s.imm_labels && ref1) ? (node.ref_kinds & kRef1ImmMask) : 0) |
                 (node.ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
-            node.op.FPrint(output, s.indent, ref_kinds, node.offset, ref1_addr, ref2_addr);
-            if (s.xrefs_to && ref1) {
-                char ref_addr_str[12]{};
-                snprintf(ref_addr_str, (sizeof ref_addr_str), "L%08x", ref1_addr);
-                fprintf(output, " | %s", ref_addr_str);
+            const bool ref1_is_local = !ref1 || IsLocalLocation(disasm_map, *ref1);
+            char ref1_label[32]{};
+            if (ref1) {
+                if (s.short_ref_local_labels && ref1_is_local) {
+                    const char dir = ref1_addr <= node.offset ? 'b' : 'f';
+                    snprintf(ref1_label, (sizeof ref1_label), "1%c", dir);
+                } else {
+                    snprintf(ref1_label, (sizeof ref1_label), "L%08x", ref1_addr);
+                }
             }
-            if (s.xrefs_to && ref2) {
-                char ref_addr_str[12]{};
-                snprintf(ref_addr_str, (sizeof ref_addr_str), "L%08x", ref2_addr);
-                fprintf(output, " | %s", ref_addr_str);
+            const bool ref2_is_local = !ref2 || IsLocalLocation(disasm_map, *ref2);
+            char ref2_label[32]{};
+            if (ref2) {
+                if (s.short_ref_local_labels && ref2_is_local) {
+                    const char dir = ref2_addr <= node.offset ? 'b' : 'f';
+                    snprintf(ref2_label, (sizeof ref2_label), "1%c", dir);
+                } else {
+                    snprintf(ref2_label, (sizeof ref2_label), "L%08x", ref2_addr);
+                }
+            }
+            node.op.FPrint(
+                    output,
+                    s.indent,
+                    ref_kinds,
+                    ref1_label,
+                    ref2_label,
+                    node.offset,
+                    ref1_addr,
+                    ref2_addr);
+            if (s.xrefs_to && !(s.short_ref_local_labels && ref1_is_local)) {
+                fprintf(output, " | L%08x", ref1_addr);
+            }
+            if (s.xrefs_to && !(s.short_ref_local_labels && ref2_is_local)) {
+                fprintf(output, " | L%08x", ref2_addr);
             }
         } else {
             node.op.FPrint(output, s.indent);
@@ -495,62 +581,44 @@ static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings
     return EXIT_SUCCESS;
 }
 
-static bool IsValidFeature(const char *feature)
+static bool FeatureStringHasPrefixNo(const char *feature)
 {
-    constexpr size_t sizeof_no_prefix = sizeof("no-")-1;
-    if (0 == memcmp(feature, "no-", sizeof_no_prefix)) {
-        feature += sizeof_no_prefix;
-    }
-    if (0 == strcmp(feature, "rdc")) {
-        return true;
-    } else if (0 == strcmp(feature, "labels")) {
-        return true;
-    } else if (0 == strcmp(feature, "rel-labels")) {
-        return true;
-    } else if (0 == strcmp(feature, "abs-labels")) {
-        return true;
-    } else if (0 == strcmp(feature, "imm-labels")) {
-        return true;
-    } else if (0 == strcmp(feature, "export-labels")) {
-        return true;
-    } else if (0 == strcmp(feature, "export-all-labels")) {
-        return true;
-    } else if (0 == strcmp(feature, "export-functions")) {
-        return true;
-    } else if (0 == strcmp(feature, "xrefs-from")) {
-        return true;
-    } else if (0 == strcmp(feature, "xrefs-to")) {
+    assert(feature);
+    // There is also implicit, embedded and free check for null terminator
+    if (feature[0] == 'n' && feature[1] == 'o' && feature[2] == '-') {
         return true;
     }
     return false;
 }
 
-static void ApplyFeature(Settings& s, const char *feature_arg)
+static bool ApplyFeature(Settings& s, const char *feature_arg)
 {
+    struct {
+        bool Settings::* setting;
+        const char* feature_name;
+    } const features[]{
+        { &Settings::raw_data_comment, "rdc" },
+        { &Settings::labels, "labels" },
+        { &Settings::rel_labels, "rel-labels" },
+        { &Settings::abs_labels, "abs-labels" },
+        { &Settings::imm_labels, "imm-labels" },
+        { &Settings::short_ref_local_labels, "short-ref-local-labels" },
+        { &Settings::export_labels, "export-labels" },
+        { &Settings::export_all_labels, "export-all-labels" },
+        { &Settings::export_functions, "export-functions" },
+        { &Settings::xrefs_from, "xrefs-from" },
+        { &Settings::xrefs_to, "xrefs-to" },
+    };
     constexpr size_t sizeof_no_prefix = (sizeof "no-") - 1;
-    const bool disable = (0 == memcmp(feature_arg, "no-", sizeof_no_prefix));
+    const bool disable = FeatureStringHasPrefixNo(feature_arg);
     const char *const feature = feature_arg + (disable ? sizeof_no_prefix : 0);
-    if (0 == strcmp(feature, "rdc")) {
-        s.raw_data_comment = !disable;
-    } else if (0 == strcmp(feature, "labels")) {
-        s.labels = !disable;
-    } else if (0 == strcmp(feature, "rel-labels")) {
-        s.rel_labels = !disable;
-    } else if (0 == strcmp(feature, "abs-labels")) {
-        s.abs_labels = !disable;
-    } else if (0 == strcmp(feature, "imm-labels")) {
-        s.imm_labels = !disable;
-    } else if (0 == strcmp(feature, "export-labels")) {
-        s.export_labels = !disable;
-    } else if (0 == strcmp(feature, "export-all-labels")) {
-        s.export_all_labels = !disable;
-    } else if (0 == strcmp(feature, "export-functions")) {
-        s.export_functions = !disable;
-    } else if (0 == strcmp(feature, "xrefs-from")) {
-        s.xrefs_from = !disable;
-    } else if (0 == strcmp(feature, "xrefs-to")) {
-        s.xrefs_to = !disable;
+    for (size_t i = 0; i < (sizeof features) / (sizeof *features); i++) {
+        if (0 == strcmp(feature, features[i].feature_name)) {
+            s.*(features[i].setting) = !disable;
+            return true;
+        }
     }
+    return false;
 }
 
 static void PrintUsage(FILE *s, const char *argv0)
@@ -576,6 +644,10 @@ static void PrintUsage(FILE *s, const char *argv0)
     fprintf(s, "  abs-labels            Use label instead of number on absolute branch or call.\n");
     fprintf(s, "  imm-labels            Use label instead of number when immediate value moved\n");
     fprintf(s, "                        to address register.\n");
+    fprintf(s, "  short-ref-local-labels\n");
+    fprintf(s, "                        Use local labels (numbers) for short jumps or loops.\n");
+    fprintf(s, "                        Jump is considered short when it does not cross other\n");
+    fprintf(s, "                        labels and has no calls.\n");
     fprintf(s, "  export-labels         Add `.globl` preamble to labels referenced two or more\n");
     fprintf(s, "                        times.\n");
     fprintf(s, "  export-all-labels     Add `.globl` preamble to all labels.\n");
@@ -591,7 +663,7 @@ int main(int, char* argv[])
         {"help", 'h', OPTPARSE_NONE},
         {"output", 'o', OPTPARSE_REQUIRED},
         {"pc-trace", 't', OPTPARSE_REQUIRED},
-        {"feature", 'f', OPTPARSE_OPTIONAL},
+        {"feature", 'f', OPTPARSE_REQUIRED},
         {"indent", 80, OPTPARSE_REQUIRED},
         {},
     };
@@ -616,11 +688,10 @@ int main(int, char* argv[])
             trace_file_name = options.optarg;
             break;
         case 'f':
-            if (!IsValidFeature(options.optarg)) {
+            if (!ApplyFeature(s, options.optarg)) {
                 fprintf(stderr, "main: Error: Unknown feature \"%s\", exiting\n", options.optarg);
                 return EXIT_FAILURE;
             }
-            ApplyFeature(s, options.optarg);
             break;
         case 80:
             s.indent = options.optarg;

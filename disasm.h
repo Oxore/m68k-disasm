@@ -299,6 +299,7 @@ struct Arg {
             size_t bufsz,
             bool imm_as_hex = false,
             RefKindMask ref_kinds = 0,
+            const char *label = nullptr,
             uint32_t self_addr = 0,
             uint32_t ref_addr = 0) const;
 };
@@ -355,6 +356,8 @@ struct Op {
             FILE *,
             const char *indent,
             RefKindMask ref_kinds = 0,
+            const char *ref1_label = nullptr,
+            const char *ref2_label = nullptr,
             uint32_t self_addr = 0,
             uint32_t ref1_addr = 0,
             uint32_t ref2_addr = 0) const;

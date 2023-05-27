@@ -8,6 +8,7 @@ struct Settings {
     bool rel_labels{};
     bool abs_labels{};
     bool imm_labels{};
+    bool short_ref_local_labels{};
     bool export_labels{};
     bool export_all_labels{};
     bool export_functions{};
