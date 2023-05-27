@@ -26,8 +26,8 @@ enum class DisasmMapType {
 class DisasmMap {
     const DisasmMapType _type;
     DisasmNode *_map[kDisasmMapSizeElements]{};
-    constexpr DisasmNode *findNodeByOffset(uint32_t offset) const;
-    DisasmNode *insertTracedNode(uint32_t offset, TracedNodeType);
+    constexpr DisasmNode *findNodeByAddress(uint32_t address) const;
+    DisasmNode *insertTracedNode(uint32_t address, TracedNodeType);
     void insertReferencedBy(
             const uint32_t by_addr,
             const uint32_t ref_addr,
@@ -36,37 +36,37 @@ class DisasmMap {
             const ReferenceType ref_type);
     bool canBeAllocated(const DisasmNode& node) const;
 public:
-    constexpr const DisasmNode *FindNodeByOffset(uint32_t offset) const
+    constexpr const DisasmNode *FindNodeByAddress(uint32_t address) const
     {
-        return findNodeByOffset(offset);
+        return findNodeByAddress(address);
     };
     // Returns true if node inserted, false if node already exist and has not
     // been changed
-    bool InsertTracedNode(uint32_t offset, TracedNodeType type)
+    bool InsertTracedNode(uint32_t address, TracedNodeType type)
     {
         assert(_type == DisasmMapType::kTraced);
-        return nullptr != insertTracedNode(offset, type);
+        return nullptr != insertTracedNode(address, type);
     }
     void Disasm(const DataBuffer &code, const Settings &);
     DisasmMap(DisasmMapType type): _type(type) {}
     ~DisasmMap();
 };
 
-constexpr DisasmNode *DisasmMap::findNodeByOffset(uint32_t offset) const
+constexpr DisasmNode *DisasmMap::findNodeByAddress(uint32_t address) const
 {
-    if (offset < kRomSizeBytes)
-        return _map[offset / kInstructionSizeStepBytes];
+    if (address < kRomSizeBytes)
+        return _map[address / kInstructionSizeStepBytes];
     return nullptr;
 }
 
-static uint32_t AlignInstructionAddress(const uint32_t offset)
+static uint32_t AlignInstructionAddress(const uint32_t address)
 {
-    return offset & ~1UL;
+    return address & ~1UL;
 }
 
-DisasmNode *DisasmMap::insertTracedNode(const uint32_t offset, const TracedNodeType type)
+DisasmNode *DisasmMap::insertTracedNode(const uint32_t address, const TracedNodeType type)
 {
-    auto *node = findNodeByOffset(offset);
+    auto *node = findNodeByAddress(address);
     if (node) {
         // Instruction nodes take precedence over data nodes. If a node that
         // was previously accessed only as data now turns out to be an
@@ -78,9 +78,9 @@ DisasmNode *DisasmMap::insertTracedNode(const uint32_t offset, const TracedNodeT
         }
         return node;
     }
-    node = new DisasmNode(DisasmNode{type, AlignInstructionAddress(offset)});
+    node = new DisasmNode(DisasmNode{type, AlignInstructionAddress(address)});
     assert(node);
-    _map[offset / kInstructionSizeStepBytes] = node;
+    _map[address / kInstructionSizeStepBytes] = node;
     return node;
 }
 
@@ -97,7 +97,7 @@ void DisasmMap::insertReferencedBy(
     if (canBeAllocated(*ref_node)) {
         // Spread across the size
         for (size_t o = kInstructionSizeStepBytes; o < size; o++) {
-            _map[(ref_node->offset + o) / kInstructionSizeStepBytes] = ref_node;
+            _map[(ref_node->address + o) / kInstructionSizeStepBytes] = ref_node;
         }
     } else {
         ref_node->DisasmAsRaw(code);
@@ -108,9 +108,9 @@ void DisasmMap::insertReferencedBy(
 bool DisasmMap::canBeAllocated(const DisasmNode& node) const
 {
     const auto size = node.size / kInstructionSizeStepBytes;
-    const auto *const node_real = findNodeByOffset(node.offset);
+    const auto *const node_real = findNodeByAddress(node.address);
     for (size_t i = 1; i < size; i++) {
-        const auto *const ptr = _map[node.offset / kInstructionSizeStepBytes + i];
+        const auto *const ptr = _map[node.address / kInstructionSizeStepBytes + i];
         if (ptr != nullptr && ptr != node_real) {
             return false;
         }
@@ -158,7 +158,7 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
         if (canBeAllocated(*node)) {
             // Spread across the size
             for (size_t o = kInstructionSizeStepBytes; o < size; o++) {
-                _map[(node->offset + o) / kInstructionSizeStepBytes] = node;
+                _map[(node->address + o) / kInstructionSizeStepBytes] = node;
             }
         } else {
             node->DisasmAsRaw(code);
@@ -170,7 +170,7 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
             const TracedNodeType type = (node->ref_kinds & (kRef1ReadMask | kRef1WriteMask))
                 ? TracedNodeType::kData : TracedNodeType::kInstruction;
             const auto ref_type = ReferenceTypeFromRefKindMask1(node->ref_kinds);
-            insertReferencedBy(node->offset, node->ref1_addr, type, code, ref_type);
+            insertReferencedBy(node->address, node->ref1_addr, type, code, ref_type);
         }
         const bool has_code_ref2 =
             ((node->ref_kinds & kRef2Mask) && node->ref2_addr < code.occupied_size);
@@ -178,7 +178,7 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
             const TracedNodeType type = (node->ref_kinds & (kRef2ReadMask | kRef2WriteMask))
                 ? TracedNodeType::kData : TracedNodeType::kInstruction;
             const auto ref_type = ReferenceTypeFromRefKindMask2(node->ref_kinds);
-            insertReferencedBy(node->offset, node->ref2_addr, type, code, ref_type);
+            insertReferencedBy(node->address, node->ref2_addr, type, code, ref_type);
         }
         i += node->size;
     }
@@ -202,7 +202,7 @@ DisasmMap::~DisasmMap()
 }
 
 static size_t RenderRawDataComment(
-        char *out, size_t out_sz, uint32_t offset, size_t instr_sz, const DataBuffer &code)
+        char *out, size_t out_sz, uint32_t address, size_t instr_sz, const DataBuffer &code)
 {
     size_t overall_sz{};
     for (size_t i = 0; i < instr_sz; i += kInstructionSizeStepBytes)
@@ -213,11 +213,11 @@ static size_t RenderRawDataComment(
                     out + overall_sz,
                     out_sz - overall_sz,
                     " %04x",
-                    GetU16BE(code.buffer + offset + i)));
+                    GetU16BE(code.buffer + address + i)));
     }
     overall_sz += Min(
             out_sz - overall_sz,
-            snprintf(out + overall_sz, out_sz - overall_sz, " @%08x", offset));
+            snprintf(out + overall_sz, out_sz - overall_sz, " @%08x", address));
     return overall_sz;
 }
 
@@ -260,7 +260,7 @@ static constexpr bool HasCallReference(const DisasmNode &node)
 
 static constexpr size_t GetNodeSizeByAddress(const DisasmMap &disasm_map, const uint32_t address)
 {
-    const auto *node = disasm_map.FindNodeByOffset(address);
+    const auto *node = disasm_map.FindNodeByAddress(address);
     if (node == nullptr) {
         return kInstructionSizeStepBytes;
     }
@@ -276,22 +276,22 @@ static constexpr bool IsLocalLocation(const DisasmMap &disasm_map, const DisasmN
                 // Locals are definitely not made for calls
                 return false;
             }
-            const bool forward = ref_rec.address < node.offset;
-            const size_t min_addr = forward ? ref_rec.address : node.offset;
+            const bool forward = ref_rec.address < node.address;
+            const size_t min_addr = forward ? ref_rec.address : node.address;
             const size_t start = min_addr + GetNodeSizeByAddress(disasm_map, min_addr);
-            const size_t max_addr = forward ? node.offset : ref_rec.address;
+            const size_t max_addr = forward ? node.address : ref_rec.address;
             const size_t end = max_addr + (forward ? 0 : GetNodeSizeByAddress(disasm_map, min_addr));
-            for (size_t o = start; o < end;) {
-                const auto *intermediate_node = disasm_map.FindNodeByOffset(o);
+            for (size_t addr = start; addr < end;) {
+                const auto *intermediate_node = disasm_map.FindNodeByAddress(addr);
                 if (intermediate_node) {
                     if (intermediate_node->ref_by) {
                         // Another labeled node detected on the jump path, hence
                         // current node's location cannot be considered local
                         return false;
                     }
-                    o += intermediate_node->size;
+                    addr += intermediate_node->size;
                 } else {
-                    o += kInstructionSizeStepBytes;
+                    addr += kInstructionSizeStepBytes;
                 }
             }
         }
@@ -330,9 +330,9 @@ static void RenderNodeDisassembly(
                 (s.export_labels && node.ref_by && (node.ref_by->refs_count > 1)) ||
                 export_this_function;
             if (export_this_label) {
-                fprintf(output, "\n%s.globl\tL%08x\n", s.indent, node.offset);
+                fprintf(output, "\n%s.globl\tL%08x\n", s.indent, node.address);
                 if (export_this_function) {
-                    fprintf(output, "%s.type\tL%08x, @function\n", s.indent, node.offset);
+                    fprintf(output, "%s.type\tL%08x, @function\n", s.indent, node.address);
                 }
             }
         }
@@ -354,18 +354,18 @@ static void RenderNodeDisassembly(
             if (s.short_ref_local_labels && is_local) {
                 fprintf(output, "1:%s", StringWihoutFristNChars(s.indent, (sizeof "1:") - 1));
             } else {
-                fprintf(output, "L%08x:\n", node.offset);
+                fprintf(output, "L%08x:\n", node.address);
             }
         }
     }
     assert(node.op.opcode != OpCode::kNone);
     if (ShouldPrintAsRaw(node.op)) {
-        auto raw = Op::Raw(GetU16BE(code.buffer + node.offset));
+        auto raw = Op::Raw(GetU16BE(code.buffer + node.address));
         raw.FPrint(output, s.indent);
         uint32_t i = kInstructionSizeStepBytes;
         for (; i < node.size; i += kInstructionSizeStepBytes) {
             char arg_str[kArgsBufferSize]{};
-            const auto arg = Arg::Raw(GetU16BE(code.buffer + node.offset + i));
+            const auto arg = Arg::Raw(GetU16BE(code.buffer + node.address + i));
             arg.SNPrint(arg_str, kArgsBufferSize);
             fprintf(output, ", %s", arg_str);
         }
@@ -373,11 +373,11 @@ static void RenderNodeDisassembly(
     } else {
         const bool with_ref = node.ref_kinds && s.labels && (s.abs_labels || s.rel_labels);
         const auto *ref1 = (node.ref_kinds & kRef1Mask)
-            ? disasm_map.FindNodeByOffset(node.ref1_addr) : nullptr;
+            ? disasm_map.FindNodeByAddress(node.ref1_addr) : nullptr;
         const auto *ref2 = (node.ref_kinds & kRef2Mask)
-            ? disasm_map.FindNodeByOffset(node.ref2_addr) : nullptr;
-        const uint32_t ref1_addr = (with_ref && ref1) ? ref1->offset : 0;
-        const uint32_t ref2_addr = (with_ref && ref2) ? ref2->offset : 0;
+            ? disasm_map.FindNodeByAddress(node.ref2_addr) : nullptr;
+        const uint32_t ref1_addr = (with_ref && ref1) ? ref1->address : 0;
+        const uint32_t ref2_addr = (with_ref && ref2) ? ref2->address : 0;
         if (with_ref && (ref1 || ref2)) {
             const RefKindMask ref_kinds =
                 (s.abs_labels
@@ -394,7 +394,7 @@ static void RenderNodeDisassembly(
             char ref1_label[32]{};
             if (ref1) {
                 if (s.short_ref_local_labels && ref1_is_local) {
-                    const char dir = ref1_addr <= node.offset ? 'b' : 'f';
+                    const char dir = ref1_addr <= node.address ? 'b' : 'f';
                     snprintf(ref1_label, (sizeof ref1_label), "1%c", dir);
                 } else {
                     snprintf(ref1_label, (sizeof ref1_label), "L%08x", ref1_addr);
@@ -404,7 +404,7 @@ static void RenderNodeDisassembly(
             char ref2_label[32]{};
             if (ref2) {
                 if (s.short_ref_local_labels && ref2_is_local) {
-                    const char dir = ref2_addr <= node.offset ? 'b' : 'f';
+                    const char dir = ref2_addr <= node.address ? 'b' : 'f';
                     snprintf(ref2_label, (sizeof ref2_label), "1%c", dir);
                 } else {
                     snprintf(ref2_label, (sizeof ref2_label), "L%08x", ref2_addr);
@@ -416,7 +416,7 @@ static void RenderNodeDisassembly(
                     ref_kinds,
                     ref1_label,
                     ref2_label,
-                    node.offset,
+                    node.address,
                     ref1_addr,
                     ref2_addr);
             if (s.xrefs_to && !(s.short_ref_local_labels && ref1_is_local)) {
@@ -434,7 +434,7 @@ static void RenderNodeDisassembly(
         RenderRawDataComment(
                 raw_data_comment,
                 (sizeof raw_data_comment) - 1,
-                node.offset,
+                node.address,
                 node.size, code);
         fprintf(output, " |%s", raw_data_comment);
     }
@@ -445,7 +445,7 @@ static void RenderDisassembly(
         FILE *const output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &s)
 {
     for (size_t i = 0; i < code.occupied_size;) {
-        const DisasmNode *node = disasm_map.FindNodeByOffset(i);
+        const DisasmNode *node = disasm_map.FindNodeByAddress(i);
         if (node) {
             RenderNodeDisassembly(output, disasm_map, code, s, *node);
             i += node->size;
@@ -470,20 +470,20 @@ static void ParseTraceData(DisasmMap &disasm_map, const DataBuffer &trace_data)
             errno = 0;
             char *startptr = reinterpret_cast<char *>(trace_data.buffer + i);
             char *endptr = startptr;
-            const long offset = strtol(startptr, &endptr, 10);
-            if ((offset == LONG_MAX || offset == LONG_MIN) && errno == ERANGE) {
+            const long address = strtol(startptr, &endptr, 10);
+            if ((address == LONG_MAX || address == LONG_MIN) && errno == ERANGE) {
                 // Parsing error, just skip
             } else if (startptr == endptr) {
                 // Parsing error, just skip
-            } else if (offset % 2) {
-                fprintf(stderr, "Error: Uneven PC values are not supported (got PC=0x%08lx), exiting\n", offset);
+            } else if (address % 2) {
+                fprintf(stderr, "Error: Uneven PC values are not supported (got PC=0x%08lx), exiting\n", address);
                 exit(1);
-            } else if (static_cast<unsigned long>(offset) > kRomSizeBytes) {
-                fprintf(stderr, "Error: PC values > 4MiB are not supported (got PC=0x%08lx), exiting\n", offset);
+            } else if (static_cast<unsigned long>(address) > kRomSizeBytes) {
+                fprintf(stderr, "Error: PC values > 4MiB are not supported (got PC=0x%08lx), exiting\n", address);
                 exit(1);
             } else {
                 // Valid value
-                disasm_map.InsertTracedNode(offset, TracedNodeType::kInstruction);
+                disasm_map.InsertTracedNode(address, TracedNodeType::kInstruction);
             }
             if (startptr != endptr) {
                 i += endptr - startptr - 1;

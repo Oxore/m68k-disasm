@@ -365,15 +365,15 @@ struct Op {
 
 struct DisasmNode {
     const TracedNodeType type{};
-    /// Absolute offset of the instruction (PC value basically)
-    const uint32_t offset{};
+    /// Address of the instruction (PC value basically)
+    const uint32_t address{};
     /// Instruction size in bytes
     size_t size{kInstructionSizeStepBytes};
     /// Indicates whether `ref_addr` should be interpreted and how
     RefKindMask ref_kinds{};
-    /// Absolute address of reference
+    /// Address of first argument reference
     uint32_t ref1_addr{};
-    /// Absolute address of reference
+    /// Address of second argument reference
     uint32_t ref2_addr{};
     ReferenceNode *ref_by{};
     ReferenceNode *last_ref_by{};
@@ -384,6 +384,6 @@ struct DisasmNode {
      */
     size_t Disasm(const DataBuffer &code);
     size_t DisasmAsRaw(const DataBuffer &code);
-    void AddReferencedBy(uint32_t offset, ReferenceType);
+    void AddReferencedBy(uint32_t address, ReferenceType);
     ~DisasmNode();
 };
