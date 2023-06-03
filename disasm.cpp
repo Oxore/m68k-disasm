@@ -1932,6 +1932,7 @@ int Arg::SNPrint(
 int Op::FPrint(
         FILE *const stream,
         const char *const indent,
+        const bool imm_as_hex,
         const RefKindMask ref_kinds,
         const char *const ref1_label,
         const char *const ref2_label,
@@ -1949,14 +1950,14 @@ int Op::FPrint(
         // argument is plain address register, status register or condition code
         // register. USP is not the case because it's value may be moved only to
         // or from An register.
-        const bool imm_as_hex =
+        const bool imm_as_hex_2 = imm_as_hex ||
             arg2.type == ArgType::kAn ||
             arg2.type == ArgType::kCCR ||
             arg2.type == ArgType::kSR;
         arg1.SNPrint(
                 arg1_str,
                 kArgsBufferSize,
-                imm_as_hex,
+                imm_as_hex_2,
                 ref1_kinds,
                 ref1_label,
                 self_addr,

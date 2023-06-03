@@ -355,6 +355,7 @@ struct Op {
     int FPrint(
             FILE *,
             const char *indent,
+            bool imm_as_hex,
             RefKindMask ref_kinds = 0,
             const char *ref1_label = nullptr,
             const char *ref2_label = nullptr,

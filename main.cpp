@@ -367,7 +367,7 @@ static void RenderNodeDisassembly(
     assert(node.op.opcode != OpCode::kNone);
     if (ShouldPrintAsRaw(node.op)) {
         auto raw = Op::Raw(GetU16BE(code.buffer + node.address));
-        raw.FPrint(output, s.indent);
+        raw.FPrint(output, s.indent, s.imm_hex);
         uint32_t i = kInstructionSizeStepBytes;
         for (; i < node.size; i += kInstructionSizeStepBytes) {
             char arg_str[kArgsBufferSize]{};
@@ -419,6 +419,7 @@ static void RenderNodeDisassembly(
             node.op.FPrint(
                     output,
                     s.indent,
+                    s.imm_hex,
                     ref_kinds,
                     ref1_label,
                     ref2_label,
@@ -434,7 +435,7 @@ static void RenderNodeDisassembly(
                 fprintf(output, " | L%08x", ref2_addr);
             }
         } else {
-            node.op.FPrint(output, s.indent);
+            node.op.FPrint(output, s.indent, s.imm_hex);
         }
     }
     if (s.raw_data_comment) {
@@ -459,7 +460,7 @@ static void RenderDisassembly(
             i += node->size;
         } else {
             auto raw = Op::Raw(GetU16BE(code.buffer + i));
-            raw.FPrint(output, s.indent);
+            raw.FPrint(output, s.indent, s.imm_hex);
             fprintf(output, "\n");
             i += kInstructionSizeStepBytes;
         }
@@ -616,6 +617,7 @@ static bool ApplyFeature(Settings& s, const char *feature_arg)
         { &Settings::export_functions, "export-functions" },
         { &Settings::xrefs_from, "xrefs-from" },
         { &Settings::xrefs_to, "xrefs-to" },
+        { &Settings::imm_hex, "imm-hex" },
     };
     constexpr size_t sizeof_no_prefix = (sizeof "no-") - 1;
     const bool disable = FeatureStringHasPrefixNo(feature_arg);
@@ -663,6 +665,7 @@ static void PrintUsage(FILE *s, const char *argv0)
     fprintf(s, "                        referenced as a call.\n");
     fprintf(s, "  xrefs-from            Print xrefs comments above all places that have xrefs.\n");
     fprintf(s, "  xrefs-to              Print xrefs comments after all branch instructions.\n");
+    fprintf(s, "  imm-hex               Print all immediate values as hexadecimal numbers.\n");
 }
 
 int main(int, char* argv[])

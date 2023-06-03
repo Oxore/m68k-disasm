@@ -4,6 +4,7 @@
 #pragma once
 
 struct Settings {
+    bool raw_data_comment{};
     bool labels{};
     bool rel_labels{};
     bool abs_labels{};
@@ -14,7 +15,7 @@ struct Settings {
     bool export_functions{};
     bool xrefs_to{};
     bool xrefs_from{};
-    bool raw_data_comment{};
+    bool imm_hex{};
     const char *indent{"\t"};
 };
 

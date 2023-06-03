@@ -7,7 +7,7 @@
 AS=m68k-none-elf-as
 OBJCOPY=m68k-none-elf-objcopy
 LD="m68k-none-elf-ld -Ttest.ld"
-DISASM="./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -flabels -frel-labels -fabs-labels -fshort-ref-local-labels"
+DISASM="./cmake-build/m68k-disasm -frdc -fxrefs-to -fxrefs-from -flabels -frel-labels -fabs-labels -fshort-ref-local-labels -fimm-hex"
 TEST_DIR=/tmp/m68k-disasm-random-tests
 
 set -e
