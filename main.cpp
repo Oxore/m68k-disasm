@@ -398,7 +398,7 @@ static void RenderNodeDisassembly(
                 (node.ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
             const bool ref1_is_local = !ref1 || IsLocalLocation(disasm_map, *ref1);
             char ref1_label[32]{};
-            if (ref1 && ((node.ref_kinds & kRef1ImmMask) ? s.imm_labels : true)) {
+            if (ref1) {
                 if (s.short_ref_local_labels && ref1_is_local) {
                     const char dir = ref1_addr <= node.address ? 'b' : 'f';
                     snprintf(ref1_label, (sizeof ref1_label), "1%c", dir);
@@ -425,7 +425,9 @@ static void RenderNodeDisassembly(
                     node.address,
                     ref1_addr,
                     ref2_addr);
-            if (s.xrefs_to && !(s.short_ref_local_labels && ref1_is_local)) {
+            const bool ref1_from_imm_ok = ((node.ref_kinds & kRef1ImmMask) ? s.imm_labels : true);
+            if (s.xrefs_to && !(s.short_ref_local_labels && ref1_is_local) && ref1_from_imm_ok)
+            {
                 fprintf(output, " | L%08x", ref1_addr);
             }
             if (s.xrefs_to && !(s.short_ref_local_labels && ref2_is_local)) {
