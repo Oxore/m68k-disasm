@@ -34,7 +34,7 @@ class DisasmMap {
             const TracedNodeType type,
             const DataBuffer &code,
             const ReferenceType ref_type);
-    bool canBeAllocated(const DisasmNode& node) const;
+    constexpr bool canBeAllocated(const DisasmNode& node) const;
 public:
     constexpr const DisasmNode *FindNodeByAddress(uint32_t address) const
     {
@@ -59,7 +59,7 @@ constexpr DisasmNode *DisasmMap::findNodeByAddress(uint32_t address) const
     return nullptr;
 }
 
-static uint32_t AlignInstructionAddress(const uint32_t address)
+static constexpr uint32_t AlignInstructionAddress(const uint32_t address)
 {
     return address & ~1UL;
 }
@@ -105,7 +105,7 @@ void DisasmMap::insertReferencedBy(
     ref_node->AddReferencedBy(by_addr, ref_type);
 }
 
-bool DisasmMap::canBeAllocated(const DisasmNode& node) const
+constexpr bool DisasmMap::canBeAllocated(const DisasmNode& node) const
 {
     const auto size = node.size / kInstructionSizeStepBytes;
     const auto *const node_real = findNodeByAddress(node.address);
@@ -118,7 +118,7 @@ bool DisasmMap::canBeAllocated(const DisasmNode& node) const
     return true;
 }
 
-static ReferenceType ReferenceTypeFromRefKindMask1(const RefKindMask ref_kinds)
+static constexpr ReferenceType ReferenceTypeFromRefKindMask1(const RefKindMask ref_kinds)
 {
     return (ref_kinds & kRefCallMask)
         ? ReferenceType::kCall
@@ -129,7 +129,7 @@ static ReferenceType ReferenceTypeFromRefKindMask1(const RefKindMask ref_kinds)
                 : ReferenceType::kBranch;
 }
 
-static ReferenceType ReferenceTypeFromRefKindMask2(const RefKindMask ref_kinds)
+static constexpr ReferenceType ReferenceTypeFromRefKindMask2(const RefKindMask ref_kinds)
 {
     return (ref_kinds & kRefCallMask)
         ? ReferenceType::kCall
@@ -140,7 +140,7 @@ static ReferenceType ReferenceTypeFromRefKindMask2(const RefKindMask ref_kinds)
                 : ReferenceType::kBranch;
 }
 
-void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
+void DisasmMap::Disasm(const DataBuffer &code, const Settings &s)
 {
     DisasmNode *node;
     for (size_t i = 0; i < Min(kRomSizeBytes, code.occupied_size);) {
@@ -163,17 +163,23 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &)
         } else {
             node->DisasmAsRaw(code);
         }
-        // FIXME implement deep graph walk for DisasmMapType::kTraced case
-        const bool has_code_ref1 =
-            ((node->ref_kinds & kRef1Mask) && node->ref1_addr < code.occupied_size);
+        // FIXME implement deep graph walk for DisasmMapType::kTraced case.
+        //
+        // NOTE: There is not much information about a reference passed further,
+        // so just don't add a reference of immediate if s.imm_labels is false
+        // enabled.
+        const bool has_ref1 = (node->ref_kinds & kRef1ImmMask)
+            ? s.imm_labels
+            : (node->ref_kinds & kRef1Mask);
+        const bool has_code_ref1 = node->ref1_addr < code.occupied_size && has_ref1;
         if (has_code_ref1) {
             const TracedNodeType type = (node->ref_kinds & (kRef1ReadMask | kRef1WriteMask))
                 ? TracedNodeType::kData : TracedNodeType::kInstruction;
             const auto ref_type = ReferenceTypeFromRefKindMask1(node->ref_kinds);
             insertReferencedBy(node->address, node->ref1_addr, type, code, ref_type);
         }
-        const bool has_code_ref2 =
-            ((node->ref_kinds & kRef2Mask) && node->ref2_addr < code.occupied_size);
+        const bool has_ref2 = (node->ref_kinds & kRef2Mask);
+        const bool has_code_ref2 = (has_ref2 && node->ref2_addr < code.occupied_size);
         if (has_code_ref2) {
             const TracedNodeType type = (node->ref_kinds & (kRef2ReadMask | kRef2WriteMask))
                 ? TracedNodeType::kData : TracedNodeType::kInstruction;
@@ -392,7 +398,7 @@ static void RenderNodeDisassembly(
                 (node.ref_kinds & (kRefDataMask | kRefPcRelFix2Bytes));
             const bool ref1_is_local = !ref1 || IsLocalLocation(disasm_map, *ref1);
             char ref1_label[32]{};
-            if (ref1) {
+            if (ref1 && ((node.ref_kinds & kRef1ImmMask) ? s.imm_labels : true)) {
                 if (s.short_ref_local_labels && ref1_is_local) {
                     const char dir = ref1_addr <= node.address ? 'b' : 'f';
                     snprintf(ref1_label, (sizeof ref1_label), "1%c", dir);
