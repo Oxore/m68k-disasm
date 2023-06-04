@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: Unlicense
+ */
+
 #include "data_buffer.h"
 
 #include <cassert>
@@ -5,6 +8,7 @@
 
 void DataBuffer::Expand(size_t new_size)
 {
+    assert(buffer);
     if (new_size <= buffer_size) {
         return;
     }

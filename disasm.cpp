@@ -27,16 +27,16 @@ enum class ShiftKind: int {
     kRotate = 3,
 };
 
-constexpr Arg FetchImmediate(const uint32_t address, const DataBuffer &code, const OpSize s)
+constexpr Arg FetchImmediate(const uint32_t address, const DataView &code, const OpSize s)
 {
     if (s == OpSize::kInvalid) {
         return Arg{};
     } else if (s == OpSize::kLong) {
-        if (address + kInstructionSizeStepBytes < code.occupied_size) {
+        if (address + kInstructionSizeStepBytes < code.size) {
             const int32_t value = GetI32BE(code.buffer + address);
             return Arg::Immediate(value);
         }
-    } else if (address < code.occupied_size) {
+    } else if (address < code.size) {
         const int16_t value = GetI16BE(code.buffer + address);
         if (s == OpSize::kByte) {
             // Technically it is impossible to have value lower that -128 in 8
@@ -54,7 +54,7 @@ constexpr Arg FetchImmediate(const uint32_t address, const DataBuffer &code, con
 }
 
 constexpr Arg FetchArg(
-        const uint32_t address, const DataBuffer &code, const int m, const int xn, const OpSize s)
+        const uint32_t address, const DataView &code, const int m, const int xn, const OpSize s)
 {
     switch (m) {
     case 0: // Dn
@@ -68,13 +68,13 @@ constexpr Arg FetchArg(
     case 4: // -(An)
         return Arg::AnAddrDecr(xn);
     case 5: // (d16, An), Additional Word
-        if (address < code.occupied_size) {
+        if (address < code.size) {
             const int16_t d16 = GetI16BE(code.buffer + address);
             return Arg::D16AnAddr(xn, d16);
         }
         break;
     case 6: // (d8, An, Xi), Brief Extension Word
-        if (address < code.occupied_size) {
+        if (address < code.size) {
             const uint16_t briefext = GetU16BE(code.buffer + address);
             if (briefext & 0x0700) {
                 // briefext must have zeros on 8, 9 an 10-th bits,
@@ -91,25 +91,25 @@ constexpr Arg FetchArg(
     case 7:
         switch (xn) {
         case 0: // (xxx).W, Additional Word
-            if (address < code.occupied_size) {
+            if (address < code.size) {
                 const int32_t w = GetI16BE(code.buffer + address);
                 return Arg::Word(w);
             }
             break;
         case 1: // (xxx).L, Additional Long
-            if (address + kInstructionSizeStepBytes < code.occupied_size) {
+            if (address + kInstructionSizeStepBytes < code.size) {
                 const int32_t l = GetI32BE(code.buffer + address);
                 return Arg::Long(l);
             }
             break;
         case 2: // (d16, PC), Additional Word
-            if (address < code.occupied_size) {
+            if (address < code.size) {
                 const int16_t d16 = GetI16BE(code.buffer + address);
                 return Arg::D16PCAddr(d16);
             }
             break;
         case 3: // (d8, PC, Xi), Brief Extension Word
-            if (address < code.occupied_size) {
+            if (address < code.size) {
                 const uint16_t briefext = GetU16BE(code.buffer + address);
                 if (briefext & 0x0700) {
                     // briefext must have zeros on 8, 9 an 10-th bits,
@@ -136,7 +136,7 @@ constexpr Arg FetchArg(
 }
 
 static Arg FetchArg(
-        const uint32_t address, const DataBuffer &code, const uint16_t instr, const OpSize s)
+        const uint32_t address, const DataView &code, const uint16_t instr, const OpSize s)
 {
     const int addrmode = instr & 0x3f;
     const int m = (addrmode >> 3) & 7;
@@ -151,7 +151,7 @@ static size_t disasm_verbatim(DisasmNode &node, const uint16_t instr)
 }
 
 static size_t disasm_jsr_jmp(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const OpSize opsize = OpSize::kWord;
     const auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, instr, opsize);
@@ -218,7 +218,7 @@ static size_t disasm_ext(DisasmNode &node, const OpSize opsize, const Arg arg)
 }
 
 static size_t disasm_ext_movem(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const auto dir = static_cast<MoveDirection>((instr >> 10) & 1);
     const unsigned m = (instr >> 3) & 7;
@@ -227,7 +227,7 @@ static size_t disasm_ext_movem(
     if (m == 0 && dir == MoveDirection::kRegisterToMemory) {
         return disasm_ext(node, opsize, Arg::Dn(xn));
     }
-    if (node.address + kInstructionSizeStepBytes >= code.occupied_size) {
+    if (node.address + kInstructionSizeStepBytes >= code.size) {
         // Not enough space for regmask, but maybe it is just EXT?
         return disasm_verbatim(node, instr);
     }
@@ -298,7 +298,7 @@ static size_t disasm_ext_movem(
 }
 
 static size_t disasm_lea(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const OpSize opsize = OpSize::kLong;
     const auto addr = FetchArg(
@@ -338,7 +338,7 @@ static size_t disasm_lea(
 }
 
 static size_t disasm_chk(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const OpSize opsize = OpSize::kWord;
     const auto src = FetchArg(
@@ -370,7 +370,7 @@ static size_t disasm_chk(
 }
 
 static size_t disasm_bra_bsr_bcc(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const int16_t dispmt0 = static_cast<int8_t>(instr & 0xff);
     if (dispmt0 == -1) {
@@ -381,7 +381,7 @@ static size_t disasm_bra_bsr_bcc(
     const auto opsize = dispmt0 ? OpSize::kShort : OpSize::kWord;
     if (dispmt0 == 0) {
         // Check the boundaries
-        if (node.address + kInstructionSizeStepBytes >= code.occupied_size) {
+        if (node.address + kInstructionSizeStepBytes >= code.size) {
             return disasm_verbatim(node, instr);
         }
         node.size = kInstructionSizeStepBytes * 2;
@@ -412,7 +412,7 @@ static OpCode OpCodeForBitOps(const unsigned opcode)
 }
 
 static size_t disasm_movep(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const unsigned dn = ((instr >> 9) & 7);
     const unsigned an = instr & 7;
@@ -437,7 +437,7 @@ static size_t disasm_movep(
 static size_t disasm_src_arg_bitops_movep(
         DisasmNode &node,
         const uint16_t instr,
-        const DataBuffer &code,
+        const DataView &code,
         const bool has_dn_src = true)
 {
     const unsigned m = (instr >> 3) & 7;
@@ -497,7 +497,7 @@ static size_t disasm_src_arg_bitops_movep(
     return node.size = kInstructionSizeStepBytes + src.Size(opsize0) + dst.Size(opsize0);
 }
 
-static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataBuffer &c)
+static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataView &c)
 {
     return disasm_src_arg_bitops_movep(n, i, c, false);
 }
@@ -526,7 +526,7 @@ static OpCode OpCodeForLogicalImmediate(const unsigned opcode)
 }
 
 static size_t disasm_bitops_movep(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const bool has_source_reg = (instr >> 8) & 1;
     if (has_source_reg) {
@@ -600,7 +600,7 @@ static size_t disasm_bitops_movep(
 }
 
 static size_t disasm_move_movea(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const int opsize_raw = (instr >> 12) & 3;
     const OpSize opsize = (opsize_raw == 1)
@@ -684,7 +684,7 @@ static size_t disasm_move_movea(
 }
 
 static size_t disasm_move_from_sr(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const auto opsize = OpSize::kWord;
     const auto dst = FetchArg(
@@ -714,7 +714,7 @@ static size_t disasm_move_from_sr(
 }
 
 static size_t disasm_move_to(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const ArgType reg)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const ArgType reg)
 {
     const auto opsize = OpSize::kWord;
     const auto src = FetchArg(
@@ -755,7 +755,7 @@ static OpCode opcode_for_negx_clr_neg_not(const unsigned opcode)
 }
 
 static size_t disasm_move_negx_clr_neg_not(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     const unsigned opcode = (instr >> 9) & 3;
@@ -807,7 +807,7 @@ static size_t disasm_trivial(
 }
 
 static size_t disasm_tas(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const auto opsize = OpSize::kByte;
     const auto a = FetchArg(
@@ -837,7 +837,7 @@ static size_t disasm_tas(
 }
 
 static size_t disasm_tst_tas_illegal(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     const int m = (instr >> 3) & 7;
@@ -880,7 +880,7 @@ static size_t disasm_trap(DisasmNode &node, const uint16_t instr)
     return node.size = kInstructionSizeStepBytes;
 }
 
-static size_t disasm_link_unlink(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_link_unlink(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const bool unlk = (instr >> 3) & 1;
     const unsigned xn = instr & 7;
@@ -911,7 +911,7 @@ static size_t disasm_move_usp(DisasmNode &node, const uint16_t instr)
     return node.size = kInstructionSizeStepBytes;
 }
 
-static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const bool is_nbcd = !((instr >> 6) & 1);
     const OpSize opsize0 = OpSize::kWord;
@@ -964,7 +964,7 @@ static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const
     return node.size = kInstructionSizeStepBytes + arg.Size(opsize0);
 }
 
-static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const auto a = FetchImmediate(node.address + kInstructionSizeStepBytes, code, OpSize::kWord);
     if (a.mode != AddrMode::kImmediate) {
@@ -974,7 +974,7 @@ static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataBuff
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
-static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     if ((instr & 0xf900) == 0x4000) {
         return disasm_move_negx_clr_neg_not(node, instr, code);
@@ -1018,7 +1018,7 @@ static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataB
 }
 
 static size_t disasm_addq_subq(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpSize opsize)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const OpSize opsize)
 {
     const auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, instr, opsize);
     switch (a.mode) {
@@ -1053,9 +1053,9 @@ static size_t disasm_addq_subq(
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
-static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
-    if (node.address + kInstructionSizeStepBytes >= code.occupied_size) {
+    if (node.address + kInstructionSizeStepBytes >= code.size) {
         return disasm_verbatim(node, instr);
     }
     const int16_t dispmt_raw = GetI16BE(code.buffer + node.address + kInstructionSizeStepBytes);
@@ -1072,7 +1072,7 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataBuff
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
-static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const OpSize opsize = OpSize::kWord;
     const auto a = FetchArg(
@@ -1102,7 +1102,7 @@ static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const Data
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
-static size_t disasm_addq_subq_scc_dbcc(DisasmNode &n, const uint16_t instr, const DataBuffer &c)
+static size_t disasm_addq_subq_scc_dbcc(DisasmNode &n, const uint16_t instr, const DataView &c)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
@@ -1128,7 +1128,7 @@ static size_t disasm_moveq(DisasmNode &node, const uint16_t instr)
 static size_t disasm_divu_divs_mulu_muls(
         DisasmNode &node,
         const uint16_t instr,
-        const DataBuffer &code,
+        const DataView &code,
         const OpCode opcode)
 {
     const auto opsize = OpSize::kWord;
@@ -1181,7 +1181,7 @@ static size_t disasm_addx_subx_abcd_sbcd(
 static size_t disasm_or_and(
         DisasmNode &node,
         const uint16_t instr,
-        const DataBuffer &code,
+        const DataView &code,
         const OpSize opsize,
         const OpCode opcode)
 {
@@ -1231,7 +1231,7 @@ static size_t disasm_or_and(
 }
 
 static size_t disasm_divu_divs_sbcd_or(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     // Also ensures that opsize == OpSize::kByte, i.e. 0b00
     if ((instr & 0x1f0) == 0x100) {
@@ -1247,7 +1247,7 @@ static size_t disasm_divu_divs_sbcd_or(
 }
 
 static size_t disasm_adda_suba_cmpa(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpCode opcode)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
     const auto src = FetchArg(
@@ -1278,7 +1278,7 @@ static size_t disasm_adda_suba_cmpa(
 static size_t disasm_add_sub_cmp(
         DisasmNode &node,
         const uint16_t instr,
-        const DataBuffer &code,
+        const DataView &code,
         const OpCode opcode,
         const OpSize opsize,
         const bool dir_to_addr)
@@ -1356,7 +1356,7 @@ static size_t disasm_cmpm(DisasmNode &node, const uint16_t instr)
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
-static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     const auto addr = FetchArg(
@@ -1388,7 +1388,7 @@ static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataBuffe
 }
 
 static size_t disasm_eor_cmpm_cmp_cmpa(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
@@ -1423,7 +1423,7 @@ static size_t disasm_exg(DisasmNode &node, const uint16_t instr)
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
-static size_t disasm_chunk_c(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_chunk_c(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     if ((instr & 0x1f0) == 0x100) {
         return disasm_addx_subx_abcd_sbcd(node, instr, OpCode::kABCD);
@@ -1442,7 +1442,7 @@ static size_t disasm_chunk_c(DisasmNode &node, const uint16_t instr, const DataB
 }
 
 static size_t disasm_add_sub_x_a(
-        DisasmNode &node, const uint16_t instr, const DataBuffer &code, const OpCode opcode)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
@@ -1477,7 +1477,7 @@ static bool IsValidShiftKind(const ShiftKind k)
     return static_cast<int>(k) < 4;
 }
 
-static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const DataBuffer &code)
+static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const DataView &code)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     const unsigned xn = instr & 7;
@@ -1529,7 +1529,7 @@ static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const 
     return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
 }
 
-static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c)
+static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataView &c)
 {
     switch ((i & 0xf000) >> 12) {
     case 0x0:
@@ -1569,10 +1569,10 @@ static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataBuffer &c)
     return disasm_verbatim(n, i);
 }
 
-size_t DisasmNode::Disasm(const DataBuffer &code)
+size_t DisasmNode::Disasm(const DataView &code)
 {
     // We assume that machine have no MMU and ROM data always starts with 0
-    assert(this->address < code.occupied_size);
+    assert(this->address < code.size);
     // It is possible to have multiple DisasmNode::Disasm() calls, and there is
     // no point to disassemble it again if it already has opcode determined
     if (this->op.opcode != OpCode::kNone) {
@@ -1591,10 +1591,10 @@ size_t DisasmNode::Disasm(const DataBuffer &code)
     }
 }
 
-size_t DisasmNode::DisasmAsRaw(const DataBuffer &code)
+size_t DisasmNode::DisasmAsRaw(const DataView &code)
 {
     // We assume that machine have no MMU and ROM data always starts with 0
-    assert(this->address < code.occupied_size);
+    assert(this->address < code.size);
     size = kInstructionSizeStepBytes;
     ref_kinds = 0;
     ref1_addr = 0;

@@ -26,6 +26,7 @@ set(m68kdisasm_sources
     main.cpp
     data_buffer.cpp
     disasm.cpp
+    elf_image.cpp
     )
 
 add_executable(m68k-disasm ${m68kdisasm_sources})

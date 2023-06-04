@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Unlicense
  */
 
-#include "disasm.h"
+#include "elf_image.h"
 #include "data_buffer.h"
+#include "disasm.h"
 #include "common.h"
 
 #define OPTPARSE_IMPLEMENTATION
@@ -32,7 +33,7 @@ class DisasmMap {
             const uint32_t by_addr,
             const uint32_t ref_addr,
             const TracedNodeType type,
-            const DataBuffer &code,
+            const DataView &code,
             const ReferenceType ref_type);
     constexpr bool canBeAllocated(const DisasmNode& node) const;
 public:
@@ -47,7 +48,7 @@ public:
         assert(_type == DisasmMapType::kTraced);
         return nullptr != insertTracedNode(address, type);
     }
-    void Disasm(const DataBuffer &code, const Settings &);
+    void Disasm(const DataView &code, const Settings &);
     DisasmMap(DisasmMapType type): _type(type) {}
     ~DisasmMap();
 };
@@ -88,7 +89,7 @@ void DisasmMap::insertReferencedBy(
         const uint32_t by_addr,
         const uint32_t ref_addr,
         const TracedNodeType type,
-        const DataBuffer &code,
+        const DataView &code,
         const ReferenceType ref_type)
 {
     auto *const ref_node = insertTracedNode(ref_addr, type);
@@ -140,10 +141,10 @@ static constexpr ReferenceType ReferenceTypeFromRefKindMask2(const RefKindMask r
                 : ReferenceType::kBranch;
 }
 
-void DisasmMap::Disasm(const DataBuffer &code, const Settings &s)
+void DisasmMap::Disasm(const DataView &code, const Settings &s)
 {
     DisasmNode *node;
-    for (size_t i = 0; i < Min(kRomSizeBytes, code.occupied_size);) {
+    for (size_t i = 0; i < Min(kRomSizeBytes, code.size);) {
         if (_type == DisasmMapType::kTraced) {
             node = _map[i / kInstructionSizeStepBytes];
             if (!node) {
@@ -171,7 +172,7 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &s)
         const bool has_ref1 = (node->ref_kinds & kRef1ImmMask)
             ? s.imm_labels
             : (node->ref_kinds & kRef1Mask);
-        const bool has_code_ref1 = node->ref1_addr < code.occupied_size && has_ref1;
+        const bool has_code_ref1 = node->ref1_addr < code.size && has_ref1;
         if (has_code_ref1) {
             const TracedNodeType type = (node->ref_kinds & (kRef1ReadMask | kRef1WriteMask))
                 ? TracedNodeType::kData : TracedNodeType::kInstruction;
@@ -179,7 +180,7 @@ void DisasmMap::Disasm(const DataBuffer &code, const Settings &s)
             insertReferencedBy(node->address, node->ref1_addr, type, code, ref_type);
         }
         const bool has_ref2 = (node->ref_kinds & kRef2Mask);
-        const bool has_code_ref2 = (has_ref2 && node->ref2_addr < code.occupied_size);
+        const bool has_code_ref2 = (has_ref2 && node->ref2_addr < code.size);
         if (has_code_ref2) {
             const TracedNodeType type = (node->ref_kinds & (kRef2ReadMask | kRef2WriteMask))
                 ? TracedNodeType::kData : TracedNodeType::kInstruction;
@@ -208,7 +209,7 @@ DisasmMap::~DisasmMap()
 }
 
 static size_t RenderRawDataComment(
-        char *out, size_t out_sz, uint32_t address, size_t instr_sz, const DataBuffer &code)
+        char *out, size_t out_sz, uint32_t address, size_t instr_sz, const DataView &code)
 {
     size_t overall_sz{};
     for (size_t i = 0; i < instr_sz; i += kInstructionSizeStepBytes)
@@ -324,7 +325,7 @@ static constexpr const char *StringWihoutFristNChars(const char *str, const size
 static void RenderNodeDisassembly(
         FILE *const output,
         const DisasmMap &disasm_map,
-        const DataBuffer &code,
+        const DataView &code,
         const Settings &s,
         const DisasmNode &node)
 {
@@ -451,9 +452,9 @@ static void RenderNodeDisassembly(
 }
 
 static void RenderDisassembly(
-        FILE *const output, const DisasmMap &disasm_map, const DataBuffer &code, const Settings &s)
+        FILE *const output, const DisasmMap &disasm_map, const DataView &code, const Settings &s)
 {
-    for (size_t i = 0; i < code.occupied_size;) {
+    for (size_t i = 0; i < code.size;) {
         const DisasmNode *node = disasm_map.FindNodeByAddress(i);
         if (node) {
             RenderNodeDisassembly(output, disasm_map, code, s, *node);
@@ -467,18 +468,18 @@ static void RenderDisassembly(
     }
 }
 
-static void ParseTraceData(DisasmMap &disasm_map, const DataBuffer &trace_data)
+static void ParseTraceData(DisasmMap &disasm_map, const DataView &trace_data)
 {
     // FIXME make a full blown parser with various radixes support and different
     // trace types support
     bool parse = true;
-    for (size_t i = 0; i < trace_data.occupied_size; i++) {
+    for (size_t i = 0; i < trace_data.size; i++) {
         if (trace_data.buffer[i] == '\n' || trace_data.buffer[i] == '\r') {
             parse = true;
         } else if (parse) {
             errno = 0;
-            char *startptr = reinterpret_cast<char *>(trace_data.buffer + i);
-            char *endptr = startptr;
+            const char *startptr = reinterpret_cast<const char *>(trace_data.buffer + i);
+            char *endptr = nullptr;
             const long address = strtol(startptr, &endptr, 10);
             if ((address == LONG_MAX || address == LONG_MIN) && errno == ERANGE) {
                 // Parsing error, just skip
@@ -530,58 +531,56 @@ static size_t ReadFromStream(DataBuffer &db, FILE *stream)
     return db.occupied_size;
 }
 
-static int M68kDisasmByTrace(FILE *input_stream, FILE *output_stream, FILE *trace_stream, const Settings &s)
+static DisasmMap *NewDisasmMap(FILE *trace_stream)
 {
-    // Read machine code into buffer
-    DataBuffer code{};
-    const size_t input_size = ReadFromStream(code, input_stream);
-    if (input_size == 0) {
-        fprintf(stderr, "ReadFromStream(code, input_stream): Error: No data has been read\n");
-        return EXIT_FAILURE;
-    }
-    // It just not worth it to check this somewhere while disassebling or
-    // emitting. Odd size is just not supported.
-    if (code.occupied_size % 2) {
-        fprintf(stderr, "Error: code blob must be of even size\n");
-        return EXIT_FAILURE;
+    if (trace_stream == nullptr) {
+        DisasmMap *disasm_map = new DisasmMap{DisasmMapType::kRaw};
+        assert(disasm_map);
+        return disasm_map;
     }
     // Read trace file into buffer
     DataBuffer trace_data{};
     const size_t trace_size = ReadFromStream(trace_data, trace_stream);
     if (trace_size == 0) {
         fprintf(stderr, "ReadFromStream(trace_data, trace_stream): Error: No data has been read\n");
-        return EXIT_FAILURE;
+        return nullptr;
     }
     // Parse trace file into map
     DisasmMap *disasm_map = new DisasmMap{DisasmMapType::kTraced};
     assert(disasm_map);
-    ParseTraceData(*disasm_map, trace_data);
-    // Disasm into output map
-    disasm_map->Disasm(code, s);
-    // Print output into output_stream
-    RenderDisassembly(output_stream, *disasm_map, code, s);
-    delete disasm_map;
-    return EXIT_SUCCESS;
+    ParseTraceData(*disasm_map, trace_data.View());
+    return disasm_map;
 }
 
-static int M68kDisasmAll(FILE *input_stream, FILE *output_stream, const Settings &s)
+static int M68kDisasm(
+        FILE *input_stream, FILE *output_stream, FILE *trace_stream, const Settings &s)
 {
-    // Read machine code into buffer
-    DataBuffer code{};
-    const size_t input_size = ReadFromStream(code, input_stream);
+    // Read input file into buffer
+    DataBuffer input{};
+    const size_t input_size = ReadFromStream(input, input_stream);
     if (input_size == 0) {
-        fprintf(stderr, "ReadFromStream(code, input_stream): Error: No data has been read\n");
+        fprintf(stderr, "ReadFromStream(input, input_stream): Error: No data has been read\n");
         return EXIT_FAILURE;
     }
-    // It just not worth it to check this somewhere while disassebling or
+    const ELF::Image elf(static_cast<DataBuffer&&>(input));
+    if (s.bfd == BFDTarget::kELF && !elf.IsValid()) {
+        fprintf(stderr, "Error: ELF image is not valid: %s\n", elf.Error());
+        return EXIT_FAILURE;
+    }
+    const bool from_elf = s.bfd == BFDTarget::kELF || (s.bfd == BFDTarget::kAuto && elf.IsValid());
+    const DataView code(from_elf ? elf.ProgramView() : elf.Data().View());
+    assert(code.buffer != nullptr);
+    assert(code.size != 0);
+    // It is not worth it to check this somewhere while disassembling or
     // emitting. Odd size is just not supported.
-    if (code.occupied_size % 2) {
-        fprintf(stderr, "Error: code blob must be of even size\n");
+    if (code.size % 2) {
+        fprintf(stderr, "M68kDisasm: Error: code blob must be of even size\n");
         return EXIT_FAILURE;
     }
-    // Create the map and disasseble
-    DisasmMap *disasm_map = new DisasmMap{DisasmMapType::kRaw};
-    assert(disasm_map);
+    auto *disasm_map = NewDisasmMap(trace_stream);
+    if (disasm_map == nullptr) {
+        return EXIT_FAILURE;
+    }
     // Disasm into output map
     disasm_map->Disasm(code, s);
     // Print output into output_stream
@@ -634,38 +633,44 @@ static bool ApplyFeature(Settings& s, const char *feature_arg)
 static void PrintUsage(FILE *s, const char *argv0)
 {
     // Please, keep all lines in 80 columns range when printed.
-    fprintf(s, "Usage: %s [options] [<input-file-name>]\n", argv0);
-    fprintf(s, "Options:\n");
-    fprintf(s, "  -h, --help,           Show this message.\n");
-    fprintf(s, "  -o, --output,         Where to write disassembly to (stdout if not set)\n");
-    fprintf(s, "  -t, --pc-trace,       File containing PC trace\n");
-    fprintf(s, "      --indent,         Specify instruction indentation, e.g. \"\t\",\n");
-    fprintf(s, "                        Single tab is used by default.\n");
-    fprintf(s, "  -f, --feature=[no-]<feature>\n");
-    fprintf(s, "                        Enable or disable (with \"no-\" prefix) a feature.\n");
-    fprintf(s, "                        Available features described below under the\n");
-    fprintf(s, "                        \"Feature flags\" section.\n");
-    fprintf(s, "  <input_file_name>     Binary file with machine code (stdin if not set)\n");
-    fprintf(s, "Feature flags:\n");
-    fprintf(s, "  rdc                   Print raw data comment.\n");
-    fprintf(s, "  labels                Print labels above all places that have jumps from\n");
-    fprintf(s, "                        somewhere.\n");
-    fprintf(s, "  rel-labels            Use label instead of number on relative branch or call.\n");
-    fprintf(s, "  abs-labels            Use label instead of number on absolute branch or call.\n");
-    fprintf(s, "  imm-labels            Use label instead of number when immediate value moved\n");
-    fprintf(s, "                        to address register.\n");
-    fprintf(s, "  short-ref-local-labels\n");
-    fprintf(s, "                        Use local labels (numbers) for short jumps or loops.\n");
-    fprintf(s, "                        Jump is considered short when it does not cross other\n");
-    fprintf(s, "                        labels and has no calls.\n");
-    fprintf(s, "  export-labels         Add `.globl` preamble to labels referenced two or more\n");
-    fprintf(s, "                        times.\n");
-    fprintf(s, "  export-all-labels     Add `.globl` preamble to all labels.\n");
-    fprintf(s, "  export-functions      Add `.globl` and `.type @funciton` preamble to a label\n");
-    fprintf(s, "                        referenced as a call.\n");
-    fprintf(s, "  xrefs-from            Print xrefs comments above all places that have xrefs.\n");
-    fprintf(s, "  xrefs-to              Print xrefs comments after all branch instructions.\n");
-    fprintf(s, "  imm-hex               Print all immediate values as hexadecimal numbers.\n");
+    fprintf(s,
+    "Usage: %s [options] <input-file-name>\n"
+    "Options:\n"
+    "  -h, --help,           Show this message.\n"
+    "  -o, --output,         Where to write disassembly to (stdout if not set)\n"
+    "  -t, --pc-trace,       File containing PC trace\n"
+    "      --indent,         Specify instruction indentation, e.g. \"\t\",\n"
+    "                        Single tab is used by default.\n"
+    "  -f, --feature=[no-]<feature>\n"
+    "                        Enable or disable (with \"no-\" prefix) a feature.\n"
+    "                        Available features described below under the\n"
+    "                        \"Feature flags\" section.\n"
+    "  -b, --bfd-target=bfdname\n"
+    "                        Specify target object format as `bfdname`. Will attempt\n"
+    "                        to detect automatically if not set. Only `auto,\n"
+    "                        `binary` and `elf` are currently supported.\n"
+    "  <input_file_name>     Binary or elf file with the machine code to disassemble\n"
+    "Feature flags:\n"
+    "  rdc                   Print raw data comment.\n"
+    "  labels                Print labels above all places that have jumps from\n"
+    "                        somewhere.\n"
+    "  rel-labels            Use label instead of number on relative branch or call.\n"
+    "  abs-labels            Use label instead of number on absolute branch or call.\n"
+    "  imm-labels            Use label instead of number when immediate value moved\n"
+    "                        to address register.\n"
+    "  short-ref-local-labels\n"
+    "                        Use local labels (numbers) for short jumps or loops.\n"
+    "                        Jump is considered short when it does not cross other\n"
+    "                        labels and has no calls.\n"
+    "  export-labels         Add `.globl` preamble to labels referenced two or more\n"
+    "                        times.\n"
+    "  export-all-labels     Add `.globl` preamble to all labels.\n"
+    "  export-functions      Add `.globl` and `.type @funciton` preamble to a label\n"
+    "                        referenced as a call.\n"
+    "  xrefs-from            Print xrefs comments above all places that have xrefs.\n"
+    "  xrefs-to              Print xrefs comments after all branch instructions.\n"
+    "  imm-hex               Print all immediate values as hexadecimal numbers.\n"
+    , argv0);
 }
 
 int main(int, char* argv[])
@@ -675,6 +680,7 @@ int main(int, char* argv[])
         {"output", 'o', OPTPARSE_REQUIRED},
         {"pc-trace", 't', OPTPARSE_REQUIRED},
         {"feature", 'f', OPTPARSE_REQUIRED},
+        {"bfd-target", 'b', OPTPARSE_REQUIRED},
         {"indent", 80, OPTPARSE_REQUIRED},
         {},
     };
@@ -704,6 +710,26 @@ int main(int, char* argv[])
                 return EXIT_FAILURE;
             }
             break;
+        case 'b':
+            {
+                const auto *bfd_str = options.optarg;
+                if (0 == strcmp(bfd_str, "auto")) {
+                    s.bfd = BFDTarget::kAuto;
+                } else if (0 == strcmp(bfd_str, "binary")) {
+                    s.bfd = BFDTarget::kBinary;
+                } else if (0 == strcmp(bfd_str, "elf")) {
+                    s.bfd = BFDTarget::kELF;
+                } else {
+                    fprintf(
+                            stderr,
+                            "Unknown BFD target specified: \"%s\". "
+                            "Refer to usage below to find correct BFD values.\n",
+                            bfd_str);
+                    PrintUsage(stderr, argv[0]);
+                    return EXIT_FAILURE;
+                }
+            }
+            break;
         case 80:
             s.indent = options.optarg;
             break;
@@ -723,7 +749,7 @@ int main(int, char* argv[])
         }
     }
     // Open the files
-    FILE *input_stream = stdin;
+    FILE *input_stream = nullptr;
     FILE *output_stream = stdout;
     FILE *trace_stream = nullptr;
     if (input_file_name) {
@@ -733,12 +759,17 @@ int main(int, char* argv[])
             fprintf(stderr, "main: fopen(\"%s\", \"r\"): Error (%d): \"%s\"\n", input_file_name, err, strerror(err));
             return EXIT_FAILURE;
         }
+    } else {
+        fprintf(stderr, "main: Error: no input file name specified, see usage below.\n");
+        PrintUsage(stderr, argv[0]);
+        return EXIT_FAILURE;
     }
     if (output_file_name) {
         output_stream = fopen(output_file_name, "w");
         if (output_stream == nullptr) {
             const int err = errno;
             fprintf(stderr, "main: fopen(\"%s\", \"w\"): Error (%d): \"%s\"\n", output_file_name, err, strerror(err));
+            fclose(input_stream);
             return EXIT_FAILURE;
         }
     }
@@ -747,13 +778,13 @@ int main(int, char* argv[])
         if (trace_stream == nullptr) {
             const int err = errno;
             fprintf(stderr, "main: fopen(\"%s\", \"r\"): Error (%d): \"%s\"\n", trace_file_name, err, strerror(err));
+            fclose(input_stream);
+            fclose(output_stream);
             return EXIT_FAILURE;
         }
     }
     // Run the program
-    const int ret = trace_stream
-        ? M68kDisasmByTrace(input_stream, output_stream, trace_stream, s)
-        : M68kDisasmAll(input_stream, output_stream, s);
+    const int ret = M68kDisasm(input_stream, output_stream, trace_stream, s);
     if (trace_stream != nullptr) {
         fclose(trace_stream);
     }

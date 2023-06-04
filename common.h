@@ -1,7 +1,16 @@
+#pragma once
+
 /* SPDX-License-Identifier: Unlicense
  */
 
-#pragma once
+#include <cstddef>
+#include <cstdint>
+
+enum class BFDTarget {
+    kAuto,
+    kBinary,
+    kELF,
+};
 
 struct Settings {
     bool raw_data_comment{};
@@ -16,6 +25,7 @@ struct Settings {
     bool xrefs_to{};
     bool xrefs_from{};
     bool imm_hex{};
+    BFDTarget bfd{};
     const char *indent{"\t"};
 };
 
@@ -54,17 +64,17 @@ constexpr size_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStepBy
 
 static inline constexpr size_t Min(size_t a, size_t b) { return a < b ? a : b; }
 
-static inline constexpr uint16_t GetU16BE(uint8_t *buffer)
+static inline constexpr uint16_t GetU16BE(const uint8_t *buffer)
 {
     return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
 }
 
-static inline constexpr int16_t GetI16BE(uint8_t *buffer)
+static inline constexpr int16_t GetI16BE(const uint8_t *buffer)
 {
     return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
 }
 
-static inline constexpr int32_t GetI32BE(uint8_t *buffer)
+static inline constexpr int32_t GetI32BE(const uint8_t *buffer)
 {
     return (static_cast<uint32_t>(buffer[0]) << 24) |
         (static_cast<uint32_t>(buffer[1]) << 16) |

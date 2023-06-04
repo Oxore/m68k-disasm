@@ -9,3 +9,4 @@
 prof_output
 cmake[-_]build*/
 compile_commands.json
+m68k-disasm

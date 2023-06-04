@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: Unlicense
+ */
+
 MEMORY {
     ROM(rx) : ORIGIN = 0x00000000, LENGTH = 4M
 }

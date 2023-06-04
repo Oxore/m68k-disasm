@@ -1,7 +1,7 @@
+#pragma once
+
 /* SPDX-License-Identifier: Unlicense
  */
-
-#pragma once
 
 #include "data_buffer.h"
 #include "common.h"
@@ -383,8 +383,8 @@ struct DisasmNode {
     /*! Disassembles instruction with arguments
      * returns size of whole instruction with arguments in bytes
      */
-    size_t Disasm(const DataBuffer &code);
-    size_t DisasmAsRaw(const DataBuffer &code);
+    size_t Disasm(const DataView &code);
+    size_t DisasmAsRaw(const DataView &code);
     void AddReferencedBy(uint32_t address, ReferenceType);
     ~DisasmNode();
 };
