@@ -1064,7 +1064,7 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataView
     node.ref_kinds = kRef2RelMask;
     node.op = Op{
         OpCode::kDBcc,
-        OpSize::kNone,
+        OpSize::kWord,
         static_cast<Condition>((instr >> 8) & 0xf),
         Arg::AddrModeXn(ArgType::kDn, (instr & 7)),
         Arg::Displacement(dispmt),
@@ -1098,7 +1098,7 @@ static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const Data
         // Does not exist
         return disasm_verbatim(node, instr);
     }
-    node.op = Op{OpCode::kScc, OpSize::kNone, static_cast<Condition>((instr >> 8) & 0xf), a};
+    node.op = Op{OpCode::kScc, OpSize::kByte, static_cast<Condition>((instr >> 8) & 0xf), a};
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
@@ -1172,8 +1172,8 @@ static size_t disasm_addx_subx_abcd_sbcd(
     const auto src = m ? Arg::AnAddrDecr(xn) : Arg::Dn(xn);
     const auto dst = m ? Arg::AnAddrDecr(xi) : Arg::Dn(xi);
     // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily consumes
-    // SBCD.B and others. That's why `skip_suffix` flag is needed, specifically
-    // for ABCD mnemonic. It is probably a bug in GNU AS.
+    // SBCD.B and others. That's why it is OpSize::kNone specifically for ABCD
+    // mnemonic. It is probably a bug in GNU AS.
     node.op = Op::Typical(opcode, (opcode == OpCode::kABCD) ? OpSize::kNone : opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
@@ -1418,6 +1418,8 @@ static size_t disasm_exg(DisasmNode &node, const uint16_t instr)
     const int xi = (instr >> 9) & 7;
     const auto src = (m == 3) ? Arg::An(xi) : Arg::Dn(xi);
     const auto dst = (m == 2) ? Arg::Dn(xn) : Arg::An(xn);
+    // GNU AS does not accept size suffix for EXG, although it's size is always
+    // long word.
     const auto opsize = OpSize::kNone;
     node.op = Op::Typical(OpCode::kEXG, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
