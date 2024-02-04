@@ -5,7 +5,7 @@
 # Tests against reference text for -ffollow-jumps and -fwalk features
 
 TEST_DIR=/tmp/m68k-disasm-follow-jumps-walk-tests
-DISASM="./cmake-build/m68k-disasm -flabels -frel-labels -fabs-labels"
+DISASM="../cmake-build/m68k-disasm -flabels -frel-labels -fabs-labels"
 
 set -e
 CRED="\033[31m"

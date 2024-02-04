@@ -23,10 +23,10 @@ set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} ${common_flags}")
 set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} ${common_debug_flags}")
 
 set(m68kdisasm_sources
-    main.cpp
-    data_buffer.cpp
-    disasm.cpp
-    elf_image.cpp
+    src/main.cpp
+    src/data_buffer.cpp
+    src/disasm.cpp
+    src/elf_image.cpp
     )
 
 add_executable(m68k-disasm ${m68kdisasm_sources})

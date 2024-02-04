@@ -22,12 +22,11 @@ m68k-disasm: $(OBJECTS) $(LDSCRIPTS) Makefile
 
 $(OBJECTS): Makefile
 
-%.o: %.c Makefile
+%.o: src/%.c Makefile
 	sh -c "time $(CC) $(_CFLAGS) -c -o $@ $<"
 
-%.o: %.cpp Makefile
+%.o: src/%.cpp Makefile
 	sh -c "time $(CXX) $(_CXXFLAGS) -c -o $@ $<"
 
 clean:
 	rm -rfv m68k-disasm $(OBJECTS)
-
