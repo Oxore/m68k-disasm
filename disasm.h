@@ -304,8 +304,9 @@ struct Arg {
             uint32_t ref_addr = 0) const;
 };
 
-enum class TracedNodeType {
-    kInstruction,
+enum class NodeType {
+    kTracedInstruction,
+    kRefInstruction,
     kData,
 };
 
@@ -365,7 +366,7 @@ struct Op {
 };
 
 struct DisasmNode {
-    const TracedNodeType type{};
+    const NodeType type{};
     /// Address of the instruction (PC value basically)
     const uint32_t address{};
     /// Instruction size in bytes
@@ -388,3 +389,13 @@ struct DisasmNode {
     void AddReferencedBy(uint32_t address, ReferenceType);
     ~DisasmNode();
 };
+
+static constexpr inline bool IsInstruction(NodeType t)
+{
+    return t == NodeType::kTracedInstruction || t == NodeType::kRefInstruction;
+}
+
+static constexpr inline bool IsBRA(Op op)
+{
+    return op.opcode == OpCode::kBcc && op.condition == Condition::kT;
+}

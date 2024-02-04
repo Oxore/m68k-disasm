@@ -7,7 +7,7 @@
 AS=m68k-none-elf-as
 OBJCOPY=m68k-none-elf-objcopy
 LD="m68k-none-elf-ld -Ttest.ld"
-DISASM="./cmake-build/m68k-disasm"
+DISASM="./cmake-build/m68k-disasm -ffollow-jumps"
 TEST_DIR=/tmp/m68k-disasm-tests-labels-referencing
 
 set -e

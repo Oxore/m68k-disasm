@@ -25,6 +25,8 @@ struct Settings {
     bool xrefs_to{};
     bool xrefs_from{};
     bool imm_hex{};
+    bool follow_jumps{};
+    bool walk{};
     BFDTarget bfd{};
     const char *indent{"\t"};
 };

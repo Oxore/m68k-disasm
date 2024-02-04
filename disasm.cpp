@@ -1573,19 +1573,14 @@ static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataView &c)
 
 size_t DisasmNode::Disasm(const DataView &code)
 {
-    // We assume that machine have no MMU and ROM data always starts with 0
+    // We assume that machine have no MMU and ROM data always starts at 0
     assert(this->address < code.size);
-    // It is possible to have multiple DisasmNode::Disasm() calls, and there is
-    // no point to disassemble it again if it already has opcode determined
-    if (this->op.opcode != OpCode::kNone) {
-        return this->size;
-    }
     size = kInstructionSizeStepBytes;
     ref_kinds = 0;
     ref1_addr = 0;
     ref2_addr = 0;
     const uint16_t instr = GetU16BE(code.buffer + this->address);
-    if (this->type == TracedNodeType::kInstruction) {
+    if (IsInstruction(this->type)) {
         return m68k_disasm(*this, instr, code);
     } else {
         // Data should not be disassembled
@@ -1595,7 +1590,7 @@ size_t DisasmNode::Disasm(const DataView &code)
 
 size_t DisasmNode::DisasmAsRaw(const DataView &code)
 {
-    // We assume that machine have no MMU and ROM data always starts with 0
+    // We assume that machine have no MMU and ROM data always starts at 0
     assert(this->address < code.size);
     size = kInstructionSizeStepBytes;
     ref_kinds = 0;
