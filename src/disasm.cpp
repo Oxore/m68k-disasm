@@ -1791,7 +1791,9 @@ static size_t snprint_reg_mask(
     size_t span = 0;
     // 17-th bit used to close the span with 0 value unconditionally
     for (int i = 0; i < 17; i++) {
-        const uint32_t mask = 1 << (arg_type == ArgType::kRegMaskPredecrement ? (15 - i) : i);
+        const uint32_t mask = (i <= 15)
+            ? (1 << ((arg_type == ArgType::kRegMaskPredecrement) ? (15 - i) : i))
+            : 0;
         const bool hit = regmask & mask;
         const bool span_open = hit && span == 0;
         const bool span_closed = !hit && span > 1;
