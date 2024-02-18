@@ -83,9 +83,9 @@ constexpr Arg FetchArg(
             }
             // Xi number (lower 3 bits, mask 0x7) with An/Dn bit (mask 0x8)
             const uint8_t xi = (briefext >> 12) & 0xf;
-            const OpSize s = ((briefext >> 11) & 1) ? OpSize::kLong : OpSize::kWord;
+            const OpSize s2 = ((briefext >> 11) & 1) ? OpSize::kLong : OpSize::kWord;
             const int8_t d8 = briefext & 0xff;
-            return Arg::D8AnXiAddr(xn, xi, s, d8);
+            return Arg::D8AnXiAddr(xn, xi, s2, d8);
         }
         break;
     case 7:
@@ -118,9 +118,9 @@ constexpr Arg FetchArg(
                 }
                 // Xi number (lower 3 bits, mask 0x7) with An/Dn bit (mask 0x8)
                 const uint8_t xi = (briefext >> 12) & 0xf;
-                const OpSize s = ((briefext >> 11) & 1) ? OpSize::kLong : OpSize::kWord;
+                const OpSize s2 = ((briefext >> 11) & 1) ? OpSize::kLong : OpSize::kWord;
                 const int8_t d8 = briefext & 0xff;
-                return Arg::D8PCXiAddr(xn, xi, s, d8);
+                return Arg::D8PCXiAddr(xn, xi, s2, d8);
             }
             break;
         case 4: // #imm
@@ -1979,7 +1979,7 @@ int Op::FPrint(
     }
 }
 
-void DisasmNode::AddReferencedBy(const uint32_t address, const ReferenceType type)
+void DisasmNode::AddReferencedBy(const uint32_t address_from, const ReferenceType ref_type)
 {
     ReferenceNode *node{};
     if (this->last_ref_by) {
@@ -1989,7 +1989,7 @@ void DisasmNode::AddReferencedBy(const uint32_t address, const ReferenceType typ
         assert(node);
         this->ref_by = this->last_ref_by = node;
     }
-    node->refs[node->refs_count] = ReferenceRecord{type, address};
+    node->refs[node->refs_count] = ReferenceRecord{ref_type, address_from};
     node->refs_count++;
     if (node->refs_count >= kRefsCountPerBuffer) {
         ReferenceNode *new_node = new ReferenceNode{};

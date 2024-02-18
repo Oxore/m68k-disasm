@@ -8,7 +8,15 @@
 
 #define OPTPARSE_IMPLEMENTATION
 #define OPTPARSE_API static
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
 #include "optparse/optparse.h"
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 #include <cassert>
 #include <cinttypes>
