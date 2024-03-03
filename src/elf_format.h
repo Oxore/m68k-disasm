@@ -12,6 +12,7 @@ constexpr size_t kIdentSize = 16;
 constexpr size_t kHeaderSize = kIdentSize + 36;
 constexpr size_t kMagicSize = 4;
 constexpr size_t kProgramHeaderSize = 32;
+constexpr size_t kSectionHeaderSize = 40;
 
 using Address = uint32_t;
 using Offset = uint32_t;
@@ -143,6 +144,13 @@ enum class Machine : uint16_t {
     kUnknown,
 };
 
+static constexpr inline uint8_t ParseU8(const uint8_t *d) { return *d; }
+
+static constexpr inline uint8_t ParseU8(const uint8_t *d, DataEncoding)
+{
+    return ParseU8(d);
+}
+
 static constexpr inline uint16_t ParseU16(const uint8_t *d, DataEncoding e)
 {
     if (e == DataEncoding::k2MSB) {
@@ -194,15 +202,15 @@ struct Header32Raw {
     uint16_t machine;
     uint32_t version;
     Address entry;
-    Offset phoff;
-    Offset shoff;
+    Offset phoff; ///< Program header table's file offset in bytes
+    Offset shoff; ///< Section header table's file offset in bytes
     uint32_t flags;
-    uint16_t ehsize;
+    uint16_t ehsize; ///< ELF's header size in bytes
     uint16_t phentsize;
     uint16_t phnum;
     uint16_t shentsize;
     uint16_t shnum;
-    uint16_t shstrndx;
+    uint16_t shstrndx; ///< Index of .strtab in section header table
     static constexpr inline auto FromBytes(const uint8_t *data)
     {
         const auto ident = Ident32Raw::FromBytes(data);
@@ -232,15 +240,15 @@ struct Header32 {
     Machine machine;
     Version version;
     Address entry;
-    Offset phoff;
-    Offset shoff;
+    Offset phoff; ///< Program header table's file offset in bytes
+    Offset shoff; ///< Section header table's file offset in bytes
     uint32_t flags;
-    uint16_t ehsize;
+    uint16_t ehsize; ///< ELF's header size in bytes
     uint16_t phentsize;
     uint16_t phnum;
     uint16_t shentsize;
     uint16_t shnum;
-    uint16_t shstrndx;
+    uint16_t shstrndx; ///< Index of .strtab in section header table
     static constexpr inline auto FromBytes(const uint8_t *data)
     {
         const auto raw = Header32Raw::FromBytes(data);
@@ -308,14 +316,130 @@ struct ProgramHeader32 {
     static constexpr inline auto FromBytes(const uint8_t *data, const DataEncoding e)
     {
         return ProgramHeader32{
-            /* type */ ParseU32(data + 0, e),
-            /* offset */ ParseU32(data + 4, e),
-            /* vaddr */ ParseU32(data + 8, e),
-            /* paddr */ ParseU32(data + 12, e),
-            /* filesz */ ParseU32(data + 16, e),
-            /* memsz */ ParseU32(data + 20, e),
-            /* flags */ ParseU32(data + 24, e),
-            /* align */ ParseU32(data + 28, e),
+            /* .type   = */ ParseU32(data + 0, e),
+            /* .offset = */ ParseU32(data + 4, e),
+            /* .vaddr  = */ ParseU32(data + 8, e),
+            /* .paddr  = */ ParseU32(data + 12, e),
+            /* .filesz = */ ParseU32(data + 16, e),
+            /* .memsz  = */ ParseU32(data + 20, e),
+            /* .flags  = */ ParseU32(data + 24, e),
+            /* .align  = */ ParseU32(data + 28, e),
+        };
+    }
+};
+
+enum class SectionHeader32Type: uint32_t {
+    kNull = 0,
+    kProgBits = 1,
+    kSymtab = 2,
+    kStrtab = 3,
+    kRela = 4,
+    kHash = 5,
+    kDynamic = 6,
+    kNote = 7,
+    kNobits = 8,
+    kRel = 9,
+    kShlib = 10,
+    kDynsym = 11,
+    kLoProc = 0x70000000,
+    kHiProc = 0x7fffffff,
+    kLoUser = 0x80000000,
+    kHiUser = 0xffffffff,
+};
+
+struct SectionHeader32 {
+    uint32_t name{};
+    uint32_t type{};
+    uint32_t flags{};
+    Address addr{};
+    Offset offset{};
+    uint32_t size{}; ///< Size of whole section in bytes
+    uint32_t link{};
+    uint32_t info{};
+    uint32_t addralign{};
+    uint32_t entsize{}; ///< Size of a single entry (every entry has same size)
+    static constexpr inline auto FromBytes(const uint8_t *data, const DataEncoding e)
+    {
+        return SectionHeader32{
+            /* .name      = */ ParseU32(data + 0, e),
+            /* .type      = */ ParseU32(data + 4, e),
+            /* .flags     = */ ParseU32(data + 8, e),
+            /* .addr      = */ ParseU32(data + 12, e),
+            /* .offset    = */ ParseU32(data + 16, e),
+            /* .size      = */ ParseU32(data + 20, e),
+            /* .link      = */ ParseU32(data + 24, e),
+            /* .info      = */ ParseU32(data + 28, e),
+            /* .addralign = */ ParseU32(data + 32, e),
+            /* .entsize   = */ ParseU32(data + 36, e),
+        };
+    }
+    constexpr bool IsValid(void) const { return name != 0; }
+};
+
+enum class Symbol32Bind: unsigned char {
+    kLocal = 0,
+    kGlobal = 1,
+    kWeak = 2,
+    kUnknown3 = 3,
+    kUnknown4 = 4,
+    kUnknown5 = 5,
+    kUnknown6 = 6,
+    kUnknown7 = 7,
+    kUnknown8 = 8,
+    kUnknown9 = 9,
+    kUnknown10 = 10,
+    kUnknown11 = 11,
+    kUnknown12 = 12,
+    kLoProc = 13,
+    kUnknown14 = 14,
+    kHiProc = 15,
+};
+
+enum class Symbol32Type: unsigned char {
+    kNoType = 0,
+    kObject = 1,
+    kFunc = 2,
+    kSection = 3,
+    kFile = 4,
+    kUnknown5 = 5,
+    kUnknown6 = 6,
+    kUnknown7 = 7,
+    kUnknown8 = 8,
+    kUnknown9 = 9,
+    kUnknown10 = 10,
+    kUnknown11 = 11,
+    kUnknown12 = 12,
+    kLoProc = 13,
+    kUnknown14 = 14,
+    kHiProc = 15,
+};
+
+struct Symbol32 {
+    const char *name{};
+    uint32_t namendx{};
+    Address value{}; ///< Value or address, e.g address of a variable in RAM
+    uint32_t size{}; ///< Size of a symbol, e.g length of a function, etc.
+    unsigned char info{};
+    unsigned char other{};
+    uint16_t shndx{}; ///< Index of a section the symbol belongs to
+    constexpr Symbol32Bind bind() const
+    {
+        return static_cast<Symbol32Bind>(info >> 4);
+    }
+    constexpr Symbol32Type type() const
+    {
+        return static_cast<Symbol32Type>(info & 0xf);
+    }
+    static constexpr inline auto FromBytes(const uint8_t *data, const DataEncoding e)
+    {
+        return Symbol32{
+            /* .name    = */ nullptr,
+            /* .namendx = */ ParseU32(data + 0, e),
+            /* .value   = */ ParseU32(data + 4, e),
+            /* .size    = */ ParseU32(data + 8, e),
+            /* .info    = */ ParseU8(data + 12, e),
+            /* .other   = */ ParseU8(data + 13, e),
+            /* .shndx   = */ ParseU16(data + 14, e),
         };
     }
 };

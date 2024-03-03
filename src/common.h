@@ -27,6 +27,7 @@ struct Settings {
     bool imm_hex{};
     bool follow_jumps{};
     bool walk{};
+    bool symbols{};
     BFDTarget bfd{};
     const char *indent{"\t"};
 };
