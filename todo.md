@@ -1,6 +1,17 @@
 # TODO
 
-- Add support for `ELF` and `DWARF` formats to split an `ELF` file into multiple
+Some thoughts about features that may be useful, but are either too complex to
+be implemented right off the bat, or of a doubtful necessity.
+
+- Fix immediate arguments to match the operand type. E.g.:
+
+	andiw #0xffffc000,%d0 | 0240 c000 @0002e1dc
+
+should be
+
+	andiw #0xc000,%d0 | 0240 c000 @0002e1dc
+
+- Add support for `DWARF` formats to split an `ELF` file into multiple
   original assembly files. These files may not be assembly files originally, but
   they will become after decompilation.
 - Implement RAM symbol mapping from raw addresses found in the instructions like
