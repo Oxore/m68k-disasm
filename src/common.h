@@ -12,6 +12,16 @@ enum class BFDTarget {
     kELF,
 };
 
+enum class SplitPointType {
+    kLabel = 0,
+    kFunction,
+};
+
+struct SplitParams {
+    SplitPointType type{};
+    size_t alignment{};
+};
+
 struct Settings {
     bool raw_data_comment{};
     bool labels{};
@@ -30,6 +40,8 @@ struct Settings {
     bool symbols{};
     BFDTarget bfd{};
     const char *indent{"\t"};
+    const char *output_dir_path{};
+    SplitParams split{};
 };
 
 using RefKindMask = unsigned;

@@ -26,6 +26,7 @@
 #include <cstring>
 #include <cerrno>
 #include <climits>
+#include <sys/stat.h>
 
 enum class SymbolType: int {
     kNone = 0,
@@ -580,6 +581,7 @@ struct PendingObjectSizeList {
         }
         _first = pending;
     }
+    constexpr bool IsEmpty() const { return _first == nullptr; }
     const char *TakeNext(uint32_t at)
     {
         for (PendingObjectSize *cur = _first, *prev = nullptr; cur;) {
@@ -623,64 +625,65 @@ static constexpr const char *SymbolTypeToElfTypeString(SymbolType t)
     return nullptr;
 }
 
-static void RenderNodeDisassembly(
-        FILE *const output,
+static FILE *OpenNewPartFile(const char *dir, uint32_t address)
+{
+    size_t file_name_size{};
+    char *file_name{};
+    FILE *const file_name_stream = open_memstream(&file_name, &file_name_size);
+    if (file_name_stream == nullptr) {
+        const int err = errno;
+        fprintf(stderr,
+                "open_memstream() for symtab failed: Error (%d): \"%s\"\n",
+                err, strerror(err));
+        return nullptr;
+    }
+    fprintf(file_name_stream, "%s/%06" PRIx32 ".S", dir, address);
+    fclose(file_name_stream);
+    FILE *output = fopen(file_name, "w");
+    if (output == nullptr) {
+        const int err = errno;
+        fprintf(stderr, "OpenNewPartFile: fopen(\"%s\", \"w\"): Error (%d): \"%s\"\n", file_name, err, strerror(err));
+        free(file_name);
+        return nullptr;;
+    }
+    free(file_name);
+    return output;
+}
+
+struct RenderContext {
+    FILE *output{};
+    // symbol_index starts with 1 because 0 is a special null symbol
+    size_t symbol_index{1};
+    // This list is used to track all places where ".size fnname, .-fnname"
+    // directives must be put.
+    PendingObjectSizeList pending_size{};
+    size_t last_rendered_symbol_addr{SIZE_MAX};
+    size_t last_rendered_function_symbol_addr{SIZE_MAX};
+};
+
+static bool RenderNodeDisassembly(
+        const RenderContext &ctx,
         const DisasmMap &disasm_map,
         const DataView &code,
         const Settings &s,
-        const DisasmNode &node,
-        size_t &symbol_index,
-        PendingObjectSizeList &pending_size)
+        const DisasmNode &node)
 {
-    for (const char *name = pending_size.TakeNext(node.address); name;) {
-        fprintf(output, "%s.size\t%s,.-%s\n", s.indent, name, name);
-        name = pending_size.TakeNext(node.address);
-    }
-    const size_t symtab_size = disasm_map.SymbolsCount();
-    bool have_rendered_label_already = false;
-    bool have_rendered_function_label_already = false;
-    if (disasm_map.Symtab() != nullptr && symtab_size > 0) {
-        for (; symbol_index < symtab_size; symbol_index++) {
-            if (disasm_map.Symtab()[symbol_index].address >= node.address) {
-                break;
-            }
-        }
-        for (; symbol_index < symtab_size; symbol_index++) {
-            const auto &symbol = disasm_map.Symtab()[symbol_index];
-            if (symbol.address != node.address) {
-                break;
-            }
-            if (symbol.name != nullptr || *symbol.name == '\0') {
-                fprintf(output, "\n%s.globl\t%s\n", s.indent, symbol.name);
-                if (symbol.type == SymbolType::kFunction) {
-                    have_rendered_function_label_already = true;
-                }
-                const char *const type = SymbolTypeToElfTypeString(symbol.type);
-                if (type) {
-                    fprintf(output, "%s.type\t%s, @%s\n", s.indent, symbol.name, type);
-                }
-                if (symbol.size > 0) {
-                    pending_size.Add(node.address + symbol.size, symbol.name);
-                }
-                fprintf(output, "%s:\n", disasm_map.Symtab()[symbol_index].name);
-                have_rendered_label_already = true;
-            }
-        }
-    }
+    FILE *const output = ctx.output;
+    const bool have_symbol = ctx.last_rendered_symbol_addr == node.address;
     const bool is_local = s.short_ref_local_labels && IsLocalLocation(disasm_map, node);
     do {
         // Skip generating label or short jump label in-place in case if there
         // are no referrers or we already have a suitable label from ELF's
-        // symtab or some other sources, that has been printed in the code
-        // section above.
+        // symtab or some other sources, that has been printed in
+        // RenderDisassembly function.
         if (node.ref_by == nullptr) {
             break;
         }
         const bool have_call_reference = HasCallReference(node);
-        if (have_call_reference && have_rendered_function_label_already) {
+        if (have_call_reference && ctx.last_rendered_function_symbol_addr == node.address) {
             break;
         }
-        if (have_rendered_label_already) {
+        if (have_symbol) {
             break;
         }
         // If we got here it must be that there is no suitable symbol found in
@@ -708,7 +711,7 @@ static void RenderNodeDisassembly(
             }
         }
     } while (0);
-    if (s.xrefs_from && !(is_local && !have_rendered_label_already)) {
+    if (s.xrefs_from && (have_symbol || !is_local)) {
         fprintf(output, "| XREFS:\n");
         for (const ReferenceNode *ref{node.ref_by}; ref; ref = ref->next) {
             if (ref->refs_count == 0) {
@@ -816,6 +819,7 @@ static void RenderNodeDisassembly(
         fprintf(output, " |%s", raw_data_comment);
     }
     fprintf(output, "\n");
+    return true;
 }
 
 static void RenderNonCodeSymbols(
@@ -839,33 +843,160 @@ static void RenderNonCodeSymbols(
     }
 }
 
-static void RenderDisassembly(
-        FILE *const output, const DisasmMap &disasm_map, const DataView &code, const Settings &s)
+constexpr const char *kSplitMarkerx32 =
+        "\n| ---------------- >8 split_marker %08" PRIx32 " 8< ----------------\n";
+constexpr const char *kSplitMarkerzx =
+        "\n| ---------------- >8 split_marker %08zx 8< ----------------\n";
+
+static FILE *SplitIfRequired(
+        const RenderContext &ctx,
+        const DisasmMap &disasm_map,
+        const Settings &s,
+        const DisasmNode &node)
 {
-    // This list is used to track all places where ".size fnname, .-fnname"
-    // directives must be put.
-    PendingObjectSizeList pending_size{};
-    // sym_i starts with 1 because 0 is a special null symbol
-    for (size_t i = 0, sym_i = 1; i < code.size;) {
+    // Not aligned - definitely should not split here
+    if (node.address % s.split.alignment != 0) {
+        return ctx.output;
+    }
+    // Won't split inside an object of known size
+    if (false == ctx.pending_size.IsEmpty()) {
+        return ctx.output;
+    }
+    // If there any suitable symbol, we should split
+    for (size_t i = 0; i < disasm_map.SymbolsCount(); i++) {
+        const auto &symbol = disasm_map.Symtab()[i];
+        if (symbol.address != node.address) {
+            break;
+        }
+        const bool should_split = s.split.type == SplitPointType::kLabel ||
+             (s.split.type == SplitPointType::kFunction &&
+              symbol.type == SymbolType::kFunction);
+        if (should_split) {
+            if (s.output_dir_path) {
+                return OpenNewPartFile(s.output_dir_path, node.address);
+            } else {
+                fprintf(ctx.output, kSplitMarkerx32, node.address);
+                return ctx.output;
+            }
+        }
+    }
+    // No labels allowed or no references
+    if (s.labels == false || node.ref_by == nullptr) {
+        return ctx.output;
+    }
+    // If there any suitable label, we should split
+    if (s.split.type == SplitPointType::kFunction && HasCallReference(node)) {
+        if (s.output_dir_path) {
+            return OpenNewPartFile(s.output_dir_path, node.address);
+        } else {
+            fprintf(ctx.output, kSplitMarkerx32, node.address);
+            return ctx.output;
+        }
+    }
+    const bool is_local = s.short_ref_local_labels && IsLocalLocation(disasm_map, node);
+    if (s.split.type == SplitPointType::kLabel && !is_local) {
+        if (s.output_dir_path) {
+            return OpenNewPartFile(s.output_dir_path, node.address);
+        } else {
+            fprintf(ctx.output, kSplitMarkerx32, node.address);
+            return ctx.output;
+        }
+    }
+    return ctx.output;
+}
+
+static bool RenderDisassembly(
+        FILE *const out, const DisasmMap &disasm_map, const DataView &code, const Settings &s)
+{
+    RenderContext ctx{out};
+    if (s.split.alignment && s.output_dir_path) {
+        FILE *const output = OpenNewPartFile(s.output_dir_path, 0);
+        if (output == nullptr) {
+            return false;
+        }
+        ctx.output = output;
+    }
+    for (size_t address = 0; address < code.size;) {
         const DisasmNode raw = DisasmNode{
             /* .type        = */ NodeType::kTracedInstruction,
-            /* .address     = */ static_cast<uint32_t>(i),
+            /* .address     = */ static_cast<uint32_t>(address),
             /* .size        = */ 2,
             /* .ref_kinds   = */ 0,
             /* .ref1_addr   = */ 0,
             /* .ref2_addr   = */ 0,
             /* .ref_by      = */ nullptr,
             /* .last_ref_by = */ nullptr,
-            /* .op          = */ Op::Raw(GetU16BE(code.buffer + i)),
+            /* .op          = */ Op::Raw(GetU16BE(code.buffer + address)),
         };
-        const DisasmNode *node = disasm_map.FindNodeByAddress(i);
+        const DisasmNode *node = disasm_map.FindNodeByAddress(address);
         if (node == nullptr) {
             node = &raw;
         }
-        RenderNodeDisassembly(output, disasm_map, code, s, *node, sym_i, pending_size);
-        i += node->size;
+        const size_t symtab_size = disasm_map.SymbolsCount();
+        if (disasm_map.Symtab() != nullptr && symtab_size > 0) {
+            for (const char *name = ctx.pending_size.TakeNext(address); name;) {
+                fprintf(ctx.output, "%s.size\t%s,.-%s\n", s.indent, name, name);
+                name = ctx.pending_size.TakeNext(address);
+            }
+            for (; ctx.symbol_index < symtab_size; ctx.symbol_index++) {
+                if (disasm_map.Symtab()[ctx.symbol_index].address >= address) {
+                    break;
+                }
+            }
+        }
+        if (s.split.alignment) {
+            FILE *const output = SplitIfRequired(ctx, disasm_map, s, *node);
+            if (output == nullptr) {
+                return false;
+            }
+            if (output != ctx.output) {
+                fclose(ctx.output);
+                ctx.output = output;
+            }
+        }
+        if (disasm_map.Symtab() != nullptr && symtab_size > 0) {
+            for (size_t i = ctx.symbol_index; i < symtab_size; i++) {
+                const auto &symbol = disasm_map.Symtab()[i];
+                if (symbol.address != address) {
+                    break;
+                }
+                if (symbol.name != nullptr || *symbol.name == '\0') {
+                    fprintf(ctx.output, "\n%s.globl\t%s\n", s.indent, symbol.name);
+                    if (symbol.type == SymbolType::kFunction) {
+                        ctx.last_rendered_function_symbol_addr = address;
+                    }
+                    const char *const type = SymbolTypeToElfTypeString(symbol.type);
+                    if (type) {
+                        fprintf(ctx.output, "%s.type\t%s, @%s\n", s.indent, symbol.name, type);
+                    }
+                    if (symbol.size > 0) {
+                        ctx.pending_size.Add(address + symbol.size, symbol.name);
+                    }
+                    fprintf(ctx.output, "%s:\n", disasm_map.Symtab()[i].name);
+                    ctx.last_rendered_symbol_addr = address;
+                }
+            }
+        }
+        RenderNodeDisassembly(ctx, disasm_map, code, s, *node);
+        address += node->size;
     }
-    RenderNonCodeSymbols(output, disasm_map, code, s);
+    if (s.split.alignment) {
+        if (s.output_dir_path) {
+            FILE *const output = OpenNewPartFile(s.output_dir_path, kRomSizeBytes);
+            if (output == nullptr) {
+                return false;
+            }
+            fclose(ctx.output);
+            ctx.output = output;
+        } else {
+            fprintf(ctx.output, kSplitMarkerzx, kRomSizeBytes);
+        }
+    }
+    RenderNonCodeSymbols(ctx.output, disasm_map, code, s);
+    if (ctx.output != out) {
+        fclose(ctx.output);
+    }
+    return true;
 }
 
 static void ParseTraceData(DisasmMap &disasm_map, const DataView &trace_data)
@@ -989,8 +1120,11 @@ static int M68kDisasm(
     // Disasm into output map
     disasm_map->Disasm(code, s);
     // Print output into output_stream
-    RenderDisassembly(output_stream, *disasm_map, code, s);
+    const bool success = RenderDisassembly(output_stream, *disasm_map, code, s);
     delete disasm_map;
+    if (success == false) {
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }
 
@@ -1044,19 +1178,24 @@ static void PrintUsage(FILE *s, const char *argv0)
     fprintf(s,
     "Usage: %s [options] <input-file-name>\n"
     "Options:\n"
-    "  -h, --help,           Show this message.\n"
-    "  -o, --output,         Where to write disassembly to (stdout if not set)\n"
-    "  -t, --pc-trace,       File containing PC trace\n"
-    "      --indent,         Specify instruction indentation, e.g. \"\t\",\n"
-    "                        Single tab is used by default.\n"
-    "  -f, --feature=[no-]<feature>\n"
+    "  -h, --help            Show this message.\n"
+    "  -o, --output FILE     Where to write disassembly to (stdout if not set).\n"
+    "  -d, --output-dir DIR  Where to place split disassembly parts to (current \n"
+    "                        directory if not set).\n"
+    "  -t, --pc-trace FILE   A file containing a PC trace table.\n"
+    "  --split=[TYPE,]ALIGN  Try to split the disassembly output into multiple files\n"
+    "                        at every label of specified TYPE and ALIGNment. If no\n"
+    "                        --output-dir is set, then split markers are placed.\n"
+    "                        Supported TYPEs are `label` (default) and `function`.\n"
+    "  --indent=STRING       Specify instruction indentation, e.g. \"\t\",\n"
+    "                        single tab is used by default.\n"
+    "  -f, --feature=[no-]FEATURE \n"
     "                        Enable or disable (with \"no-\" prefix) a feature.\n"
     "                        Available features described below under the\n"
     "                        \"Feature flags\" section.\n"
-    "  -b, --bfd-target=bfdname\n"
-    "                        Specify target object format as `bfdname`. Will attempt\n"
-    "                        to detect automatically if not set. Only `auto,\n"
-    "                        `binary` and `elf` are currently supported.\n"
+    "  -b, --bfd-target=BFD  Specify target object format. Will attempt to detect\n"
+    "                        automatically if not set. Only `auto`, `binary` and\n"
+    "                        `elf` are currently supported.\n"
     "  <input_file_name>     Binary or elf file with the machine code to disassemble\n"
     "Feature flags:\n"
     "  rdc                   Print raw data comment.\n"
@@ -1086,12 +1225,43 @@ static void PrintUsage(FILE *s, const char *argv0)
     , argv0);
 }
 
+static constexpr bool IsPowerOfTwo(size_t x)
+{
+    return (x != 0) && (0 == (x & (x - 1)));
+}
+
+static SplitParams ParseSplitOptionParameters(char *params)
+{
+    SplitPointType type{};
+    char *comma = strchr(params, ',');
+    if (comma != nullptr) {
+        // Null-terminate the first token
+        *comma = '\0';
+        if (0 == strcmp(params, "function")) {
+            type = SplitPointType::kFunction;
+        } else if (0 != strcmp(params, "label")) {
+            fprintf(stderr, "--split: Error: invalid TYPE specified\n");
+            return SplitParams{};
+        }
+        // Next token
+        params = comma + 1;
+    }
+    const int alignment = atoi(params);
+    if (alignment < 0 || !IsPowerOfTwo(size_t(alignment))) {
+        fprintf(stderr, "--split: Error: ALIGN must be a result of a non-negative integer power of two\n");
+        return SplitParams{};
+    }
+    return SplitParams{type, size_t(alignment)};
+}
+
 int main(int, char* argv[])
 {
     struct optparse_long longopts[] = {
         {"help", 'h', OPTPARSE_NONE},
         {"output", 'o', OPTPARSE_REQUIRED},
+        {"output-dir", 'd', OPTPARSE_REQUIRED},
         {"pc-trace", 't', OPTPARSE_REQUIRED},
+        {"split", 81, OPTPARSE_REQUIRED},
         {"feature", 'f', OPTPARSE_REQUIRED},
         {"bfd-target", 'b', OPTPARSE_REQUIRED},
         {"indent", 80, OPTPARSE_REQUIRED},
@@ -1114,8 +1284,31 @@ int main(int, char* argv[])
         case 'o':
             output_file_name = options.optarg;
             break;
+        case 'd':
+            s.output_dir_path = options.optarg;
+            {
+                struct stat sb{};
+                if (stat(s.output_dir_path, &sb) != 0) {
+                    const int err = errno;
+                    fprintf(stderr,
+                            "main: stat(\"%s\"): Error(%d): \"%s\"\n",
+                            s.output_dir_path, err, strerror(err));
+                    return EXIT_FAILURE;
+                }
+                if (!S_ISDIR(sb.st_mode)) {
+                    printf("main: Error: \"%s\" is not a directory\n", s.output_dir_path);
+                    return EXIT_FAILURE;
+                }
+            }
+            break;
         case 't':
             trace_file_name = options.optarg;
+            break;
+        case 81:
+            s.split = ParseSplitOptionParameters(options.optarg);
+            if (s.split.alignment == 0) {
+                return EXIT_FAILURE;
+            }
             break;
         case 'f':
             if (!ApplyFeature(s, options.optarg)) {
