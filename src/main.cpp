@@ -1003,17 +1003,18 @@ static bool RenderDisassembly(
 
 static void ParseTraceData(DisasmMap &disasm_map, const DataView &trace_data)
 {
-    // FIXME make a full blown parser with various radixes support and different
-    // trace types support
     bool parse = true;
     for (size_t i = 0; i < trace_data.size; i++) {
         if (trace_data.buffer[i] == '\n' || trace_data.buffer[i] == '\r') {
             parse = true;
         } else if (parse) {
             errno = 0;
+            // Base 0 enabled strtol to parse octal and hexadecimal numbers with
+            // prefixes like 0 or 0x. See `man strtol.3p`.
+            constexpr int base = 0;
             const char *startptr = reinterpret_cast<const char *>(trace_data.buffer + i);
             char *endptr = nullptr;
-            const long address = strtol(startptr, &endptr, 10);
+            const long address = strtol(startptr, &endptr, base);
             if ((address == LONG_MAX || address == LONG_MIN) && errno == ERANGE) {
                 // Parsing error, just skip
             } else if (startptr == endptr) {
