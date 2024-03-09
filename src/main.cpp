@@ -666,7 +666,8 @@ static bool RenderNodeDisassembly(
         const DisasmMap &disasm_map,
         const DataView &code,
         const Settings &s,
-        const DisasmNode &node)
+        const DisasmNode &node,
+        const bool traced)
 {
     FILE *const output = ctx.output;
     const bool have_symbol = ctx.last_rendered_symbol_addr == node.address;
@@ -727,8 +728,8 @@ static bool RenderNodeDisassembly(
     }
     assert(node.op.opcode != OpCode::kNone);
     if (ShouldPrintAsRaw(node.op)) {
-        auto raw = Op::Raw(GetU16BE(code.buffer + node.address));
-        raw.FPrint(output, s.indent, s.imm_hex);
+        Op::Raw(GetU16BE(code.buffer + node.address))
+            .FPrint(output, s.indent, s.imm_hex);
         uint32_t i = kInstructionSizeStepBytes;
         for (; i < node.size; i += kInstructionSizeStepBytes) {
             char arg_str[kArgsBufferSize]{};
@@ -809,7 +810,7 @@ static bool RenderNodeDisassembly(
             node.op.FPrint(output, s.indent, s.imm_hex);
         }
     }
-    if (s.raw_data_comment) {
+    if (s.raw_data_comment && (traced || s.raw_data_comment_all)) {
         char raw_data_comment[100]{};
         RenderRawDataComment(
                 raw_data_comment,
@@ -929,6 +930,7 @@ static bool RenderDisassembly(
             /* .op          = */ Op::Raw(GetU16BE(code.buffer + address)),
         };
         const DisasmNode *node = disasm_map.FindNodeByAddress(address);
+        const bool traced = node;
         if (node == nullptr) {
             node = &raw;
         }
@@ -977,7 +979,7 @@ static bool RenderDisassembly(
                 }
             }
         }
-        RenderNodeDisassembly(ctx, disasm_map, code, s, *node);
+        RenderNodeDisassembly(ctx, disasm_map, code, s, *node, traced);
         address += node->size;
     }
     if (s.split.alignment) {
@@ -1145,6 +1147,7 @@ static bool ApplyFeature(Settings& s, const char *feature_arg)
         const char* feature_name;
     } const features[]{
         { &Settings::raw_data_comment, "rdc" },
+        { &Settings::raw_data_comment_all, "rdc-all" },
         { &Settings::labels, "labels" },
         { &Settings::rel_labels, "rel-labels" },
         { &Settings::abs_labels, "abs-labels" },
@@ -1180,16 +1183,16 @@ static void PrintUsage(FILE *s, const char *argv0)
     "Options:\n"
     "  -h, --help            Show this message.\n"
     "  -o, --output FILE     Where to write disassembly to (stdout if not set).\n"
-    "  -d, --output-dir DIR  Where to place split disassembly parts to (current \n"
+    "  -d, --output-dir DIR  Where to place split disassembly parts to (current\n"
     "                        directory if not set).\n"
     "  -t, --pc-trace FILE   A file containing a PC trace table.\n"
     "  --split=[TYPE,]ALIGN  Try to split the disassembly output into multiple files\n"
     "                        at every label of specified TYPE and ALIGNment. If no\n"
     "                        --output-dir is set, then split markers are placed.\n"
     "                        Supported TYPEs are `label` (default) and `function`.\n"
-    "  --indent=STRING       Specify instruction indentation, e.g. \"\t\",\n"
-    "                        single tab is used by default.\n"
-    "  -f, --feature=[no-]FEATURE \n"
+    "  --indent=STRING       Specify instruction indentation, e.g. \"\t\", single tab\n"
+    "                        is used by default.\n"
+    "  -f, --feature=[no-]FEATURE\n"
     "                        Enable or disable (with \"no-\" prefix) a feature.\n"
     "                        Available features described below under the\n"
     "                        \"Feature flags\" section.\n"
@@ -1198,22 +1201,26 @@ static void PrintUsage(FILE *s, const char *argv0)
     "                        `elf` are currently supported.\n"
     "  <input_file_name>     Binary or elf file with the machine code to disassemble\n"
     "Feature flags:\n"
-    "  rdc                   Print raw data comment.\n"
+    "  rdc                   Print raw data comment for traced locations.\n"
+    "  rdc-all               Print raw data comment for every location (requires\n"
+    "                        -frdc).\n"
     "  labels                Print labels above all places that have jumps from\n"
     "                        somewhere.\n"
-    "  rel-labels            Use label instead of number on relative branch or call.\n"
+    "  rel-labels            Use label instead of number on relative branch or call\n"
+    "                        (requires -flabels).\n"
     "  abs-labels            Use label instead of number on absolute branch or call.\n"
+    "                        (requires -flabels).\n"
     "  imm-labels            Use label instead of number when immediate value moved\n"
-    "                        to address register.\n"
+    "                        to address register (requires -flabels).\n"
     "  short-ref-local-labels\n"
     "                        Use local labels (numbers) for short jumps or loops.\n"
     "                        Jump is considered short when it does not cross other\n"
-    "                        labels and has no calls.\n"
+    "                        labels and has no calls (requires -flabels).\n"
     "  export-labels         Add `.globl` preamble to labels referenced two or more\n"
-    "                        times.\n"
-    "  export-all-labels     Add `.globl` preamble to all labels.\n"
+    "                        times (requires -flabels).\n"
+    "  export-all-labels     Add `.globl` preamble to all labels (requires -flabels).\n"
     "  export-functions      Add `.globl` and `.type @funciton` preamble to a label\n"
-    "                        referenced as a call.\n"
+    "                        referenced as a call (requires -flabels).\n"
     "  xrefs-from            Print xrefs comments above all places that have xrefs.\n"
     "  xrefs-to              Print xrefs comments after all branch instructions.\n"
     "  imm-hex               Print all immediate values as hexadecimal numbers.\n"

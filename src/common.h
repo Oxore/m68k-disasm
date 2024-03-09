@@ -24,6 +24,7 @@ struct SplitParams {
 
 struct Settings {
     bool raw_data_comment{};
+    bool raw_data_comment_all{};
     bool labels{};
     bool rel_labels{};
     bool abs_labels{};
