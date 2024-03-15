@@ -2,9 +2,9 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   width="155.25mm"
-   height="80.25mm"
-   viewBox="0 0 155.25 80.25"
+   width="310mm"
+   height="160mm"
+   viewBox="0 0 310 160"
    version="1.1"
    id="svg5"
    inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
@@ -23,24 +23,24 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
-     showgrid="true"
-     inkscape:zoom="1.6088805"
-     inkscape:cx="298.65487"
-     inkscape:cy="144.8212"
+     showgrid="false"
+     inkscape:zoom="1.1376503"
+     inkscape:cx="616.62181"
+     inkscape:cy="230.29924"
      inkscape:window-width="2560"
      inkscape:window-height="1057"
      inkscape:window-x="0"
      inkscape:window-y="23"
      inkscape:window-maximized="1"
-     inkscape:current-layer="layer1">
+     inkscape:current-layer="g498">
     <inkscape:grid
        type="xygrid"
        id="grid132"
        units="mm"
        spacingx="1"
        spacingy="1"
-       originx="0.125"
-       originy="0.125" />
+       originx="2.9961957e-06"
+       originy="-3.0380426e-07" />
   </sodipodi:namedview>
   <defs
      id="defs2">
@@ -333,388 +333,399 @@
   <g
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
-     id="layer1"
-     transform="translate(0.125,0.125)">
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect238"
-       width="20"
-       height="10"
-       x="5"
-       y="20" />
-    <rect
-       style="fill:#eeaaff;stroke:#000000;stroke-width:0.25"
-       id="rect243"
-       width="20"
-       height="10"
-       x="30"
-       y="20" />
-    <rect
-       style="fill:#ffeeaa;stroke:#000000;stroke-width:0.25"
-       id="rect245"
-       width="20"
-       height="10"
-       x="30"
-       y="5" />
-    <rect
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25"
-       id="rect247"
-       width="20"
-       height="10"
-       x="55"
-       y="20" />
-    <rect
-       style="fill:#80b3ff;stroke:#000000;stroke-width:0.25"
-       id="rect249"
-       width="20"
-       height="10"
-       x="80"
-       y="20" />
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect253"
-       width="20"
-       height="10"
-       x="105"
-       y="20" />
-    <rect
-       style="fill:#80b3ff;stroke:#000000;stroke-width:0.25"
-       id="rect255"
-       width="20"
-       height="10"
-       x="130"
-       y="20" />
-    <rect
-       style="fill:#ffeeaa;stroke:#000000;stroke-width:0.25"
-       id="rect257"
-       width="20"
-       height="10"
-       x="130"
-       y="5" />
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect259"
-       width="20"
-       height="10"
-       x="130"
-       y="65" />
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect261"
-       width="20"
-       height="10"
-       x="5"
-       y="50" />
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="40.015503"
-       y="25.710033"
-       id="text317"><tspan
-         sodipodi:role="line"
-         id="tspan315"
-         style="font-size:2.82222px;stroke-width:0.264583"
+     id="layer1">
+    <g
+       id="g498"
+       transform="scale(2)"
+       style="stroke-width:0.5">
+      <rect
+         style="fill:#ffffff;stroke:none;stroke-width:0.25;stroke-dasharray:none"
+         id="rect477"
+         width="155"
+         height="80"
+         x="1.9021344e-09"
+         y="1.9021344e-09" />
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect238"
+         width="20"
+         height="10"
+         x="5"
+         y="20" />
+      <rect
+         style="fill:#eeaaff;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect243"
+         width="20"
+         height="10"
+         x="30"
+         y="20" />
+      <rect
+         style="fill:#ffeeaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect245"
+         width="20"
+         height="10"
+         x="30"
+         y="5" />
+      <rect
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect247"
+         width="20"
+         height="10"
+         x="55"
+         y="20" />
+      <rect
+         style="fill:#80b3ff;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect249"
+         width="20"
+         height="10"
+         x="80"
+         y="20" />
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect253"
+         width="20"
+         height="10"
+         x="105"
+         y="20" />
+      <rect
+         style="fill:#80b3ff;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect255"
+         width="20"
+         height="10"
+         x="130"
+         y="20" />
+      <rect
+         style="fill:#ffeeaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect257"
+         width="20"
+         height="10"
+         x="130"
+         y="5" />
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect259"
+         width="20"
+         height="10"
+         x="130"
+         y="65" />
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect261"
+         width="20"
+         height="10"
+         x="5"
+         y="50" />
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="40.015503"
-         y="25.710033">m68k-disasm</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="89.995354"
-       y="25.718819"
-       id="text317-3"><tspan
-         sodipodi:role="line"
-         id="tspan315-6"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         y="25.710033"
+         id="text317"><tspan
+           sodipodi:role="line"
+           id="tspan315"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="40.015503"
+           y="25.710033">m68k-disasm</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="89.995354"
-         y="25.718819">m68k*-*-*-as</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="140.01706"
-       y="25.718819"
-       id="text317-3-3"><tspan
-         sodipodi:role="line"
-         id="tspan315-6-5"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         y="25.718819"
+         id="text317-3"><tspan
+           sodipodi:role="line"
+           id="tspan315-6"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="89.995354"
+           y="25.718819">m68k*-*-*-as</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="140.01706"
-         y="25.718819">m68k*-*-*-ld</tspan></text>
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect255-6"
-       width="20"
-       height="10"
-       x="130"
-       y="35" />
-    <rect
-       style="fill:#80b3ff;stroke:#000000;stroke-width:0.25"
-       id="rect255-6-1"
-       width="20"
-       height="10"
-       x="130"
-       y="50" />
-    <text
-       xml:space="preserve"
-       style="font-size:2.11667px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="140.01706"
-       y="55.718819"
-       id="text317-3-3-2-2"><tspan
-         sodipodi:role="line"
-         id="tspan315-6-5-9-7"
-         style="font-size:2.11667px;stroke-width:0.264583"
+         y="25.718819"
+         id="text317-3-3"><tspan
+           sodipodi:role="line"
+           id="tspan315-6-5"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="140.01706"
+           y="25.718819">m68k*-*-*-ld</tspan></text>
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect255-6"
+         width="20"
+         height="10"
+         x="130"
+         y="35" />
+      <rect
+         style="fill:#80b3ff;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect255-6-1"
+         width="20"
+         height="10"
+         x="130"
+         y="50" />
+      <text
+         xml:space="preserve"
+         style="font-size:2.11667px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="140.01706"
-         y="55.718819">m68k*-*-*-objcopy</tspan></text>
-    <rect
-       style="fill:#80b3ff;stroke:#000000;stroke-width:0.25"
-       id="rect255-6-1-0"
-       width="20"
-       height="10"
-       x="5"
-       y="35" />
-    <text
-       xml:space="preserve"
-       style="font-size:2.11667px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="15.017059"
-       y="40.718819"
-       id="text317-3-3-2-2-6"><tspan
-         sodipodi:role="line"
-         id="tspan315-6-5-9-7-2"
-         style="font-size:2.11667px;stroke-width:0.264583"
+         y="55.718819"
+         id="text317-3-3-2-2"><tspan
+           sodipodi:role="line"
+           id="tspan315-6-5-9-7"
+           style="font-size:2.11667px;stroke-width:0.132291"
+           x="140.01706"
+           y="55.718819">m68k*-*-*-objcopy</tspan></text>
+      <rect
+         style="fill:#80b3ff;stroke:#000000;stroke-width:0.125"
+         id="rect255-6-1-0"
+         width="20"
+         height="10"
+         x="5"
+         y="35" />
+      <text
+         xml:space="preserve"
+         style="font-size:2.11667px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="15.017059"
-         y="40.718819">m68k*-*-*-objcopy</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="65"
-       y="25.661976"
-       id="text508"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         y="40.718819"
+         id="text317-3-3-2-2-6"><tspan
+           sodipodi:role="line"
+           id="tspan315-6-5-9-7-2"
+           style="font-size:2.11667px;stroke-width:0.132291"
+           x="15.017059"
+           y="40.718819">m68k*-*-*-objcopy</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="65"
          y="25.661976"
-         id="tspan537">output.S</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="115"
-       y="25.399975"
-       id="text508-7"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         id="text508"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="65"
+           y="25.661976"
+           id="tspan537">output.S</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="115"
          y="25.399975"
-         id="tspan541">output.o</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="140.01756"
-       y="10.496094"
-       id="text508-7-6"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         id="text508-7"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="115"
+           y="25.399975"
+           id="tspan541">output.o</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="140.01756"
          y="10.496094"
-         id="tspan541-1">output.ld</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="14.942639"
-       y="25.505913"
-       id="text508-7-6-8"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         id="text508-7-6"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="140.01756"
+           y="10.496094"
+           id="tspan541-1">output.ld</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="14.942639"
          y="25.505913"
-         id="tspan541-1-7">input.elf</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="40.005684"
-       y="10.718304"
-       id="text508-7-6-8-0"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         id="text508-7-6-8"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="14.942639"
+           y="25.505913"
+           id="tspan541-1-7">input.elf</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="40.005684"
          y="10.718304"
-         id="tspan541-1-7-2">trace-table.txt</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="15.009819"
-       y="55.496094"
-       id="text508-7-6-9"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         id="text508-7-6-8-0"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="40.005684"
+           y="10.718304"
+           id="tspan541-1-7-2">trace-table.txt</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="15.009819"
          y="55.496094"
-         id="tspan541-1-2">input.bin</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="139.94884"
-       y="40.505913"
-       id="text508-7-0"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         id="text508-7-6-9"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="15.009819"
+           y="55.496094"
+           id="tspan541-1-2">input.bin</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="139.94884"
          y="40.505913"
-         id="tspan663">output.elf</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="140.01602"
-       y="70.496094"
-       id="text508-7-0-3"><tspan
-         sodipodi:role="line"
-         style="font-size:2.82222px;stroke-width:0.264583"
+         id="text508-7-0"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="139.94884"
+           y="40.505913"
+           id="tspan663">output.elf</tspan></text>
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="140.01602"
          y="70.496094"
-         id="tspan663-6">output.bin</tspan></text>
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart)"
-       d="M 15,29.999999 V 35"
-       id="path887" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-3)"
-       d="m 15,45 v 5"
-       id="path887-5" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-9)"
-       d="m 140,30 v 5.000001"
-       id="path887-2" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8)"
-       d="M 140,14.999999 V 20"
-       id="path887-7" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-5)"
-       d="m 40,15 v 5.000001"
-       id="path887-7-4" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-3)"
-       d="m 140,45 v 5.000001"
-       id="path887-7-1" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-2)"
-       d="m 140,60 v 5.000001"
-       id="path887-7-3" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1)"
-       d="m 25,25 h 5.000001"
-       id="path887-7-7" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1-7)"
-       d="M 25,50 35,30"
-       id="path887-7-7-56"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1-7-2)"
-       d="m 25,55 20,4"
-       id="path887-7-7-56-6"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1-7-2-1)"
-       d="M 130,65 95,60"
-       id="path887-7-7-56-6-6"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1-8)"
-       d="m 50,25 h 5.000001"
-       id="path887-7-7-5" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1-0)"
-       d="m 75,25 h 5.000001"
-       id="path887-7-7-6" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1-1)"
-       d="m 100,25 h 5"
-       id="path887-7-7-63" />
-    <path
-       style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;marker-end:url(#TriangleStart-8-1-2)"
-       d="m 125,25 h 5"
-       id="path887-7-7-1" />
-    <text
-       xml:space="preserve"
-       style="font-size:3.52778px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="70.000854"
-       y="58.787323"
-       id="text3343"><tspan
-         sodipodi:role="line"
-         id="tspan3341"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:Consolas;-inkscape-font-specification:Consolas;stroke-width:0.264583"
+         id="text508-7-0-3"><tspan
+           sodipodi:role="line"
+           style="font-size:2.82222px;stroke-width:0.132291"
+           x="140.01602"
+           y="70.496094"
+           id="tspan663-6">output.bin</tspan></text>
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart)"
+         d="M 15,29.999999 V 35"
+         id="path887" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-3)"
+         d="m 15,45 v 5"
+         id="path887-5" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-9)"
+         d="m 140,30 v 5.000001"
+         id="path887-2" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8)"
+         d="M 140,14.999999 V 20"
+         id="path887-7" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-5)"
+         d="m 40,15 v 5.000001"
+         id="path887-7-4" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-3)"
+         d="m 140,45 v 5.000001"
+         id="path887-7-1" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-2)"
+         d="m 140,60 v 5.000001"
+         id="path887-7-3" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1)"
+         d="m 25,25 h 5.000001"
+         id="path887-7-7" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1-7)"
+         d="M 25,50 35,30"
+         id="path887-7-7-56"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1-7-2)"
+         d="m 25,55 20,4"
+         id="path887-7-7-56-6"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1-7-2-1)"
+         d="M 130,65 95,60"
+         id="path887-7-7-56-6-6"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1-8)"
+         d="m 50,25 h 5.000001"
+         id="path887-7-7-5" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1-0)"
+         d="m 75,25 h 5.000001"
+         id="path887-7-7-6" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1-1)"
+         d="m 100,25 h 5"
+         id="path887-7-7-63" />
+      <path
+         style="fill:#aaffaa;stroke:#000000;stroke-width:0.25;stroke-dasharray:none;marker-end:url(#TriangleStart-8-1-2)"
+         d="m 125,25 h 5"
+         id="path887-7-7-1" />
+      <text
+         xml:space="preserve"
+         style="font-size:3.52778px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="70.000854"
-         y="58.787323">cmp input.bin output.bin</tspan><tspan
-         sodipodi:role="line"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:Consolas;-inkscape-font-specification:Consolas;stroke-width:0.264583"
-         x="70.000854"
-         y="63.260784"
-         id="tspan3345">$? == 0</tspan></text>
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect3405"
-       width="45"
-       height="10"
-       x="45"
-       y="65" />
-    <text
-       xml:space="preserve"
-       style="font-size:3.52778px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="67.489655"
-       y="68.691727"
-       id="text3349"><tspan
-         sodipodi:role="line"
-         id="tspan3347"
-         style="font-size:3.52778px;stroke-width:0.264583"
+         y="58.787323"
+         id="text3343"><tspan
+           sodipodi:role="line"
+           id="tspan3341"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:Consolas;-inkscape-font-specification:Consolas;stroke-width:0.132291"
+           x="70.000854"
+           y="58.787323">cmp input.bin output.bin</tspan><tspan
+           sodipodi:role="line"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:Consolas;-inkscape-font-specification:Consolas;stroke-width:0.132291"
+           x="70.000854"
+           y="63.260784"
+           id="tspan3345">$? == 0</tspan></text>
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect3405"
+         width="45"
+         height="10"
+         x="45"
+         y="65" />
+      <text
+         xml:space="preserve"
+         style="font-size:3.52778px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="67.489655"
-         y="68.691727">input.bin and output.bin are</tspan><tspan
-         sodipodi:role="line"
-         style="font-size:3.52778px;stroke-width:0.264583"
-         x="67.489655"
-         y="73.101448"
-         id="tspan3351">identical, no matter what!</tspan></text>
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect3405-3"
-       width="60"
-       height="12"
-       x="40"
-       y="35" />
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;white-space:pre;inline-size:61.0301;stroke-width:0.264583"
-       x="67.689537"
-       y="73.440849"
-       id="text3349-5"
-       transform="translate(2.295388,-35.255495)"><tspan
+         y="68.691727"
+         id="text3349"><tspan
+           sodipodi:role="line"
+           id="tspan3347"
+           style="font-size:3.52778px;stroke-width:0.132291"
+           x="67.489655"
+           y="68.691727">input.bin and output.bin are</tspan><tspan
+           sodipodi:role="line"
+           style="font-size:3.52778px;stroke-width:0.132291"
+           x="67.489655"
+           y="73.101448"
+           id="tspan3351">identical, no matter what!</tspan></text>
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect3405-3"
+         width="60"
+         height="12"
+         x="40"
+         y="35" />
+      <text
+         xml:space="preserve"
+         style="font-size:2.82222px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;white-space:pre;inline-size:61.0301;stroke-width:0.132291"
          x="67.689537"
          y="73.440849"
-         id="tspan687">You may want to pass an ELF file (input.elf) as an<tspan
+         id="text3349-5"
+         transform="translate(2.295388,-35.255495)"><tspan
+           x="67.689537"
+           y="73.440849"
+           id="tspan3495">You may want to pass an ELF file (input.elf) as an<tspan
    y="73.440849"
-   id="tspan689"> </tspan></tspan><tspan
-         x="67.689537"
-         y="76.968631"
-         id="tspan691">input to keep ELF symbols in the disassembly or<tspan
+   id="tspan3497"> </tspan></tspan><tspan
+           x="67.689537"
+           y="76.968631"
+           id="tspan3499">input to keep ELF symbols in the disassembly or<tspan
    y="76.968631"
-   id="tspan693"> </tspan></tspan><tspan
-         x="67.689537"
-         y="80.49641"
-         id="tspan695">just use a plain ROM binary (input.bin).</tspan></text>
-    <rect
-       style="fill:none;stroke:#000000;stroke-width:0.25"
-       id="rect3407"
-       width="50"
-       height="10"
-       x="45"
-       y="55" />
-    <text
-       xml:space="preserve"
-       style="font-size:5.64444px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.264583"
-       x="91.030319"
-       y="9.8490982"
-       id="text942"><tspan
-         sodipodi:role="line"
-         id="tspan940"
-         style="stroke-width:0.264583"
+   id="tspan3501"> </tspan></tspan><tspan
+           x="67.689537"
+           y="80.49641"
+           id="tspan3503">just use a plain ROM binary (input.bin).</tspan></text>
+      <rect
+         style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
+         id="rect3407"
+         width="50"
+         height="10"
+         x="45"
+         y="55" />
+      <text
+         xml:space="preserve"
+         style="font-size:5.64444px;line-height:1.25;font-family:Candara;-inkscape-font-specification:Candara;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.132291"
          x="91.030319"
-         y="9.8490982">Main use case flow</tspan></text>
+         y="9.8490982"
+         id="text942"><tspan
+           sodipodi:role="line"
+           id="tspan940"
+           style="stroke-width:0.132291"
+           x="91.030319"
+           y="9.8490982">Main use case flow</tspan></text>
+    </g>
   </g>
 </svg>
