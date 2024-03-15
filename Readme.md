@@ -11,7 +11,7 @@ incompatible assembly listing, or it is not the same as original binary after
 translation into machine code. So I decided to build my own disassembler, that
 will do exactly what I need with full control over the process and maybe more.
 
-![A typical use case flow][pipeline.svg]
+![A typical use case flow](pipeline.svg)
 
 ## Build
 
