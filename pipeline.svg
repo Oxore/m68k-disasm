@@ -25,8 +25,8 @@
      inkscape:document-units="mm"
      showgrid="false"
      inkscape:zoom="1.1376503"
-     inkscape:cx="616.62181"
-     inkscape:cy="230.29924"
+     inkscape:cx="506.74623"
+     inkscape:cy="240.8473"
      inkscape:window-width="2560"
      inkscape:window-height="1057"
      inkscape:window-x="0"
@@ -474,7 +474,7 @@
            x="140.01706"
            y="55.718819">m68k*-*-*-objcopy</tspan></text>
       <rect
-         style="fill:#80b3ff;stroke:#000000;stroke-width:0.125"
+         style="fill:#80b3ff;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
          id="rect255-6-1-0"
          width="20"
          height="10"
@@ -697,17 +697,17 @@
          transform="translate(2.295388,-35.255495)"><tspan
            x="67.689537"
            y="73.440849"
-           id="tspan3495">You may want to pass an ELF file (input.elf) as an<tspan
+           id="tspan1233">You may want to pass an ELF file (input.elf) as an<tspan
    y="73.440849"
-   id="tspan3497"> </tspan></tspan><tspan
+   id="tspan1235"> </tspan></tspan><tspan
            x="67.689537"
            y="76.968631"
-           id="tspan3499">input to keep ELF symbols in the disassembly or<tspan
+           id="tspan1237">input to keep ELF symbols in the disassembly or<tspan
    y="76.968631"
-   id="tspan3501"> </tspan></tspan><tspan
+   id="tspan1239"> </tspan></tspan><tspan
            x="67.689537"
            y="80.49641"
-           id="tspan3503">just use a plain ROM binary (input.bin).</tspan></text>
+           id="tspan1241">just use a plain ROM binary (input.bin).</tspan></text>
       <rect
          style="fill:none;stroke:#000000;stroke-width:0.25;stroke-dasharray:none"
          id="rect3407"
