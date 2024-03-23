@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Unlicense
 
+# This Makefile exist for compile time measurements only.
+# Use CMakeLists.txt if you want to build the project.
+
 WARNFLAGS = -Wall -Wextra -pedantic -Wlogical-op
 OPTFLAGS = -O2
 ARCHFLAGS =
@@ -12,7 +15,7 @@ _LDFLAGS = $(LDFLAGS) $(OPTFLAGS) $(addprefix -T,$(LDSCRIPTS))
 OBJECTS=main.o \
 	data_buffer.o \
 	elf_image.o \
-	disasm.o
+	m68k.o
 
 .PHONY: all
 all: m68k-disasm

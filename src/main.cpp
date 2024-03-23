@@ -3,7 +3,7 @@
 
 #include "elf_image.h"
 #include "data_buffer.h"
-#include "disasm.h"
+#include "m68k.h"
 #include "common.h"
 
 #define OPTPARSE_IMPLEMENTATION
