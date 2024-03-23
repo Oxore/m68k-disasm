@@ -22,6 +22,7 @@ add_executable(m68k-disasm
     src/main.cpp
     src/data_buffer.cpp
     src/disasm.cpp
+    src/gnu.cpp
     src/m68k.cpp
     src/elf_image.cpp
     )
