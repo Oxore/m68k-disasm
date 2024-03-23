@@ -4,6 +4,7 @@
 #include "elf_image.h"
 #include "data_buffer.h"
 #include "disasm.h"
+#include "gnu.h"
 #include "common.h"
 
 #define OPTPARSE_IMPLEMENTATION
@@ -28,7 +29,7 @@
 #include <climits>
 #include <sys/stat.h>
 
-static size_t RenderRawDataComment(
+static size_t EmitRawDataComment(
         char *out, size_t out_sz, uint32_t address, size_t instr_sz, const DataView &code)
 {
     size_t overall_sz{};
@@ -232,16 +233,6 @@ struct PendingObjectSizeList {
     }
 };
 
-static constexpr const char *SymbolTypeToElfTypeString(SymbolType t)
-{
-    switch (t) {
-        case SymbolType::kNone: return nullptr;
-        case SymbolType::kFunction: return "function";
-        case SymbolType::kObject: return "object";
-    }
-    return nullptr;
-}
-
 static FILE *OpenNewPartFile(const char *dir, uint32_t address)
 {
     size_t file_name_size{};
@@ -267,7 +258,7 @@ static FILE *OpenNewPartFile(const char *dir, uint32_t address)
     return output;
 }
 
-struct RenderContext {
+struct EmitContext {
     FILE *output{};
     // symbol_index starts with 1 because 0 is a special null symbol
     size_t symbol_index{1};
@@ -278,8 +269,8 @@ struct RenderContext {
     size_t last_rendered_function_symbol_addr{SIZE_MAX};
 };
 
-static bool RenderNodeDisassembly(
-        const RenderContext &ctx,
+static bool EmitNodeDisassembly(
+        const EmitContext &ctx,
         const DisasmMap &disasm_map,
         const DataView &code,
         const Settings &s,
@@ -293,7 +284,7 @@ static bool RenderNodeDisassembly(
         // Skip generating label or short jump label in-place in case if there
         // are no referrers or we already have a suitable label from ELF's
         // symtab or some other sources, that has been printed in
-        // RenderDisassembly function.
+        // EmitDisassembly function.
         if (node.ref_by == nullptr) {
             break;
         }
@@ -429,7 +420,7 @@ static bool RenderNodeDisassembly(
     }
     if (s.raw_data_comment && (traced || s.raw_data_comment_all)) {
         char raw_data_comment[100]{};
-        RenderRawDataComment(
+        EmitRawDataComment(
                 raw_data_comment,
                 (sizeof raw_data_comment) - 1,
                 node.address,
@@ -440,7 +431,7 @@ static bool RenderNodeDisassembly(
     return true;
 }
 
-static void RenderNonCodeSymbols(
+static void EmitNonCodeSymbols(
         FILE *const output, const DisasmMap &disasm_map, const DataView &code, const Settings &s)
 {
     const size_t symtab_size = disasm_map.SymbolsCount();
@@ -450,14 +441,9 @@ static void RenderNonCodeSymbols(
             continue;
         }
         fprintf(output, "\n%s.globl\t%s\n", s.indent, symbol.name);
-        const char *const type = SymbolTypeToElfTypeString(symbol.type);
-        if (type) {
-            fprintf(output, "%s.type\t%s, @%s\n", s.indent, symbol.name, type);
-        }
+        Gnu::EmitSymbolMetadata(output, s.indent, symbol);
         fprintf(output, "%s = 0x%08x\n", symbol.name, symbol.address);
-        if (symbol.size) {
-            fprintf(output, "%s.size\t%s, 0x%zx\n", s.indent, symbol.name, symbol.size);
-        }
+        Gnu::EmitSymbolSize(output, s.indent, symbol.name);
     }
 }
 
@@ -467,7 +453,7 @@ constexpr const char *kSplitMarkerzx =
         "\n| ---------------- >8 split_marker %08zx 8< ----------------\n";
 
 static FILE *SplitIfRequired(
-        const RenderContext &ctx,
+        const EmitContext &ctx,
         const DisasmMap &disasm_map,
         const Settings &s,
         const DisasmNode &node)
@@ -523,10 +509,10 @@ static FILE *SplitIfRequired(
     return ctx.output;
 }
 
-static bool RenderDisassembly(
+static bool EmitDisassembly(
         FILE *const out, const DisasmMap &disasm_map, const DataView &code, const Settings &s)
 {
-    RenderContext ctx{out};
+    EmitContext ctx{out};
     if (s.split.alignment && s.output_dir_path) {
         FILE *const output = OpenNewPartFile(s.output_dir_path, 0);
         if (output == nullptr) {
@@ -554,7 +540,7 @@ static bool RenderDisassembly(
         const size_t symtab_size = disasm_map.SymbolsCount();
         if (disasm_map.Symtab() != nullptr && symtab_size > 0) {
             for (const char *name = ctx.pending_size.TakeNext(address); name;) {
-                fprintf(ctx.output, "%s.size\t%s,.-%s\n", s.indent, name, name);
+                Gnu::EmitSymbolSize(ctx.output, s.indent, name);
                 name = ctx.pending_size.TakeNext(address);
             }
             for (; ctx.symbol_index < symtab_size; ctx.symbol_index++) {
@@ -584,10 +570,7 @@ static bool RenderDisassembly(
                     if (symbol.type == SymbolType::kFunction) {
                         ctx.last_rendered_function_symbol_addr = address;
                     }
-                    const char *const type = SymbolTypeToElfTypeString(symbol.type);
-                    if (type) {
-                        fprintf(ctx.output, "%s.type\t%s, @%s\n", s.indent, symbol.name, type);
-                    }
+                    Gnu::EmitSymbolMetadata(out, s.indent, symbol);
                     if (symbol.size > 0) {
                         ctx.pending_size.Add(address + symbol.size, symbol.name);
                     }
@@ -596,7 +579,7 @@ static bool RenderDisassembly(
                 }
             }
         }
-        RenderNodeDisassembly(ctx, disasm_map, code, s, *node, traced);
+        EmitNodeDisassembly(ctx, disasm_map, code, s, *node, traced);
         address += node->size;
     }
     if (s.split.alignment) {
@@ -611,7 +594,7 @@ static bool RenderDisassembly(
             fprintf(ctx.output, kSplitMarkerzx, kRomSizeBytes);
         }
     }
-    RenderNonCodeSymbols(ctx.output, disasm_map, code, s);
+    EmitNonCodeSymbols(ctx.output, disasm_map, code, s);
     if (ctx.output != out) {
         fclose(ctx.output);
     }
@@ -740,7 +723,7 @@ static int M68kDisasm(
     // Disasm into output map
     disasm_map->Disasm(code, s);
     // Print output into output_stream
-    const bool success = RenderDisassembly(output_stream, *disasm_map, code, s);
+    const bool success = EmitDisassembly(output_stream, *disasm_map, code, s);
     delete disasm_map;
     if (success == false) {
         return EXIT_FAILURE;
