@@ -304,36 +304,6 @@ struct Arg {
             uint32_t ref_addr = 0) const;
 };
 
-enum class NodeType {
-    kTracedInstruction,
-    kRefInstruction,
-    kData,
-};
-
-constexpr size_t kRefsCountPerBuffer = 10;
-
-constexpr size_t kMnemonicBufferSize = 10;
-constexpr size_t kArgsBufferSize = 80;
-
-enum class ReferenceType {
-    kUnknown = 0,
-    kCall,
-    kBranch,
-    kRead,
-    kWrite,
-};
-
-struct ReferenceRecord {
-    ReferenceType type{};
-    uint32_t address{};
-};
-
-struct ReferenceNode {
-    ReferenceNode *next{};
-    ReferenceRecord refs[kRefsCountPerBuffer];
-    uint32_t refs_count{};
-};
-
 struct Op {
     OpCode opcode{OpCode::kNone}; ///< Identifies instruction (mnemonic)
     /// Size specifier, the suffix `b`, `w` or `l`
@@ -365,35 +335,8 @@ struct Op {
             uint32_t ref2_addr = 0) const;
 };
 
-struct DisasmNode {
-    const NodeType type{};
-    /// Address of the instruction (PC value basically)
-    const uint32_t address{};
-    /// Instruction size in bytes
-    size_t size{kInstructionSizeStepBytes};
-    /// Indicates whether `ref_addr` should be interpreted and how
-    RefKindMask ref_kinds{};
-    /// Address of first argument reference
-    uint32_t ref1_addr{};
-    /// Address of second argument reference
-    uint32_t ref2_addr{};
-    ReferenceNode *ref_by{};
-    ReferenceNode *last_ref_by{};
-    Op op{};
-
-    /*! Disassembles instruction with arguments
-     * returns size of whole instruction with arguments in bytes
-     */
-    size_t Disasm(const DataView &code);
-    size_t DisasmAsRaw(const DataView &code);
-    void AddReferencedBy(uint32_t address, ReferenceType);
-    ~DisasmNode();
-};
-
-static constexpr inline bool IsInstruction(NodeType t)
-{
-    return t == NodeType::kTracedInstruction || t == NodeType::kRefInstruction;
-}
+constexpr size_t kMnemonicBufferSize = 10;
+constexpr size_t kArgsBufferSize = 80;
 
 static constexpr inline bool IsBRA(Op op)
 {
