@@ -14,6 +14,7 @@ _LDFLAGS = $(LDFLAGS) $(OPTFLAGS) $(addprefix -T,$(LDSCRIPTS))
 
 OBJECTS=main.o \
 	data_buffer.o \
+	disasm.o \
 	elf_image.o \
 	m68k.o
 

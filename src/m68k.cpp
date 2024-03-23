@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Unlicense
  */
 
+#include "disasm.h"
 #include "m68k.h"
 #include "data_buffer.h"
 #include "common.h"
@@ -1978,35 +1979,5 @@ int Op::FPrint(
         }
     } else {
         return fprintf(stream, "%s%s", indent, mnemonic_str);
-    }
-}
-
-void DisasmNode::AddReferencedBy(const uint32_t address_from, const ReferenceType ref_type)
-{
-    ReferenceNode *node{};
-    if (this->last_ref_by) {
-        node = this->last_ref_by;
-    } else {
-        node = new ReferenceNode{};
-        assert(node);
-        this->ref_by = this->last_ref_by = node;
-    }
-    node->refs[node->refs_count] = ReferenceRecord{ref_type, address_from};
-    node->refs_count++;
-    if (node->refs_count >= kRefsCountPerBuffer) {
-        ReferenceNode *new_node = new ReferenceNode{};
-        assert(new_node);
-        node->next = new_node;
-        this->last_ref_by = new_node;
-    }
-}
-
-DisasmNode::~DisasmNode()
-{
-    ReferenceNode *ref{this->ref_by};
-    while (ref) {
-        ReferenceNode *prev = ref;
-        ref = ref->next;
-        delete prev;
     }
 }
