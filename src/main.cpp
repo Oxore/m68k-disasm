@@ -336,13 +336,16 @@ static bool EmitNodeDisassembly(
     }
     assert(node.op.opcode != OpCode::kNone);
     if (ShouldPrintAsRaw(node.op)) {
-        Op::Raw(GetU16BE(code.buffer + node.address))
-            .FPrint(output, s.indent, s.imm_hex);
+        FPrintOp(
+                output,
+                Op::Raw(GetU16BE(code.buffer + node.address)),
+                s.indent,
+                s.imm_hex);
         uint32_t i = kInstructionSizeStepBytes;
         for (; i < node.size; i += kInstructionSizeStepBytes) {
             char arg_str[kArgsBufferSize]{};
             const auto arg = Arg::Raw(GetU16BE(code.buffer + node.address + i));
-            arg.SNPrint(arg_str, kArgsBufferSize);
+            SNPrintArg(arg_str, kArgsBufferSize, arg);
             fprintf(output, ", %s", arg_str);
         }
     } else {
@@ -397,8 +400,9 @@ static bool EmitNodeDisassembly(
                     snprintf(ref2_label, (sizeof ref2_label), "L%08x", ref2_addr);
                 }
             }
-            node.op.FPrint(
+            FPrintOp(
                     output,
+                    node.op,
                     s.indent,
                     s.imm_hex,
                     ref_kinds,
@@ -415,7 +419,7 @@ static bool EmitNodeDisassembly(
                 fprintf(output, " | XREF2 @%08x", ref2_addr);
             }
         } else {
-            node.op.FPrint(output, s.indent, s.imm_hex);
+            FPrintOp(output, node.op, s.indent, s.imm_hex);
         }
     }
     if (s.raw_data_comment && (traced || s.raw_data_comment_all)) {
@@ -447,10 +451,8 @@ static void EmitNonCodeSymbols(
     }
 }
 
-constexpr const char *kSplitMarkerx32 =
+constexpr const char *kSplitMarker =
         "\n| ---------------- >8 split_marker %08" PRIx32 " 8< ----------------\n";
-constexpr const char *kSplitMarkerzx =
-        "\n| ---------------- >8 split_marker %08zx 8< ----------------\n";
 
 static FILE *SplitIfRequired(
         const EmitContext &ctx,
@@ -479,7 +481,7 @@ static FILE *SplitIfRequired(
             if (s.output_dir_path) {
                 return OpenNewPartFile(s.output_dir_path, node.address);
             } else {
-                fprintf(ctx.output, kSplitMarkerx32, node.address);
+                fprintf(ctx.output, kSplitMarker, node.address);
                 return ctx.output;
             }
         }
@@ -493,7 +495,7 @@ static FILE *SplitIfRequired(
         if (s.output_dir_path) {
             return OpenNewPartFile(s.output_dir_path, node.address);
         } else {
-            fprintf(ctx.output, kSplitMarkerx32, node.address);
+            fprintf(ctx.output, kSplitMarker, node.address);
             return ctx.output;
         }
     }
@@ -502,7 +504,7 @@ static FILE *SplitIfRequired(
         if (s.output_dir_path) {
             return OpenNewPartFile(s.output_dir_path, node.address);
         } else {
-            fprintf(ctx.output, kSplitMarkerx32, node.address);
+            fprintf(ctx.output, kSplitMarker, node.address);
             return ctx.output;
         }
     }
@@ -591,7 +593,7 @@ static bool EmitDisassembly(
             fclose(ctx.output);
             ctx.output = output;
         } else {
-            fprintf(ctx.output, kSplitMarkerzx, kRomSizeBytes);
+            fprintf(ctx.output, kSplitMarker, kRomSizeBytes);
         }
     }
     EmitNonCodeSymbols(ctx.output, disasm_map, code, s);

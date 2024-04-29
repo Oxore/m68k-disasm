@@ -1172,10 +1172,7 @@ static size_t disasm_addx_subx_abcd_sbcd(
     const int xi = (instr >> 9) & 7;
     const auto src = m ? Arg::AnAddrDecr(xn) : Arg::Dn(xn);
     const auto dst = m ? Arg::AnAddrDecr(xi) : Arg::Dn(xi);
-    // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily consumes
-    // SBCD.B and others. That's why it is OpSize::kNone specifically for ABCD
-    // mnemonic. It is probably a bug in GNU AS.
-    node.op = Op::Typical(opcode, (opcode == OpCode::kABCD) ? OpSize::kNone : opsize, src, dst);
+    node.op = Op::Typical(opcode, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
@@ -1758,16 +1755,6 @@ static const char *ToString(const OpSize s)
     return "";
 }
 
-static int OpcodeSNPrintf(
-        char *const buf,
-        const size_t bufsz,
-        const OpCode opcode,
-        const Condition condition,
-        const OpSize size_spec)
-{
-    return snprintf(buf, bufsz, "%s%s", ToString(opcode, condition), ToString(size_spec));
-}
-
 static char RegChar(const uint8_t xi)
 {
     return (xi & 0x08) ? 'a' : 'd';
@@ -1817,55 +1804,56 @@ static size_t snprint_reg_mask(
     return written;
 }
 
-int Arg::SNPrint(
+int SNPrintArg(
             char *const buf,
             const size_t bufsz,
+            const Arg &arg,
             const bool imm_as_hex,
             const RefKindMask ref_kinds,
             const char *const label,
             const uint32_t self_addr,
-            const uint32_t ref_addr) const
+            const uint32_t ref_addr)
 {
-    switch (type) {
+    switch (arg.type) {
     case ArgType::kNone:
         assert(false);
         break;
     case ArgType::kRaw:
-        return snprintf(buf, bufsz, "0x%04x", uword);
+        return snprintf(buf, bufsz, "0x%04x", arg.uword);
     case ArgType::kDn:
-        return snprintf(buf, bufsz, "%%d%d", xn);
+        return snprintf(buf, bufsz, "%%d%d", arg.xn);
     case ArgType::kAn:
-        return snprintf(buf, bufsz, "%%a%u", xn);
+        return snprintf(buf, bufsz, "%%a%u", arg.xn);
     case ArgType::kAnAddr:
-        return snprintf(buf, bufsz, "%%a%u@", xn);
+        return snprintf(buf, bufsz, "%%a%u@", arg.xn);
     case ArgType::kAnAddrIncr:
-        return snprintf(buf, bufsz, "%%a%u@+", xn);
+        return snprintf(buf, bufsz, "%%a%u@+", arg.xn);
     case ArgType::kAnAddrDecr:
-        return snprintf(buf, bufsz, "%%a%u@-", xn);
+        return snprintf(buf, bufsz, "%%a%u@-", arg.xn);
     case ArgType::kD16AnAddr:
-        return snprintf(buf, bufsz, "%%a%u@(%d:w)", d16_an.an, d16_an.d16);
+        return snprintf(buf, bufsz, "%%a%u@(%d:w)", arg.d16_an.an, arg.d16_an.d16);
     case ArgType::kD8AnXiAddr:
         return snprintf(
                 buf, bufsz, "%%a%u@(%d,%%%c%u:%c)",
-                d8_an_xi.an,
-                d8_an_xi.d8,
-                RegChar(d8_an_xi.xi),
-                RegNum(d8_an_xi.xi),
-                SizeSpecChar(d8_an_xi.xi));
+                arg.d8_an_xi.an,
+                arg.d8_an_xi.d8,
+                RegChar(arg.d8_an_xi.xi),
+                RegNum(arg.d8_an_xi.xi),
+                SizeSpecChar(arg.d8_an_xi.xi));
     case ArgType::kWord:
     case ArgType::kLong:
         {
-            const char c = type == ArgType::kLong ? 'l' : 'w';
+            const char c = arg.type == ArgType::kLong ? 'l' : 'w';
             if (ref_kinds & kRefAbsMask) {
-                if (static_cast<uint32_t>(lword) == ref_addr) {
+                if (static_cast<uint32_t>(arg.lword) == ref_addr) {
                     return snprintf(buf, bufsz, "%s:%c", label, c);
                 } else {
                     // It has to be AFTER the label we are gonna reference here
-                    assert(static_cast<uint32_t>(lword) > ref_addr);
-                    return snprintf(buf, bufsz, "%s+%d:%c", label, lword - ref_addr, c);
+                    assert(static_cast<uint32_t>(arg.lword) > ref_addr);
+                    return snprintf(buf, bufsz, "%s+%d:%c", label, arg.lword - ref_addr, c);
                 }
             } else {
-                return snprintf(buf, bufsz, "0x%x:%c", lword, c);
+                return snprintf(buf, bufsz, "0x%x:%c", arg.lword, c);
             }
         }
     case ArgType::kD16PCAddr:
@@ -1873,7 +1861,11 @@ int Arg::SNPrint(
             // XXX: Most of instructions with PC relative values have 2 bytes
             // added to the offset, some does not. Still figuring that out.
             const bool has_fix = ref_kinds & kRefPcRelFix2Bytes;
-            const uint32_t arg_addr = self_addr + d16_pc.d16 + kInstructionSizeStepBytes + (has_fix ? kInstructionSizeStepBytes : 0);
+            // XXX: I should try (self_addr + instruction_size - ext_word_size)
+            // universally instead of hacky fix flag, but it requires some
+            // overhaul of the instruction printing functions.
+            const uint32_t arg_addr = self_addr + arg.d16_pc.d16 + kInstructionSizeStepBytes +
+                (has_fix ? kInstructionSizeStepBytes : 0);
             if (arg_addr == ref_addr) {
                 return snprintf(buf, bufsz, "%%pc@(%s:w)", label);
             } else {
@@ -1881,42 +1873,42 @@ int Arg::SNPrint(
                 return snprintf(buf, bufsz,  "%%pc@(%s+%d:w)", label, arg_addr - ref_addr);
             }
         } else {
-            return snprintf(buf, bufsz, "%%pc@(%d:w)", d16_pc.d16);
+            return snprintf(buf, bufsz, "%%pc@(%d:w)", arg.d16_pc.d16);
         }
     case ArgType::kD8PCXiAddr:
         return snprintf(
                 buf, bufsz, "%%pc@(%d,%%%c%u:%c)",
-                d8_pc_xi.d8,
-                RegChar(d8_pc_xi.xi),
-                RegNum(d8_pc_xi.xi),
-                SizeSpecChar(d8_pc_xi.xi));
+                arg.d8_pc_xi.d8,
+                RegChar(arg.d8_pc_xi.xi),
+                RegNum(arg.d8_pc_xi.xi),
+                SizeSpecChar(arg.d8_pc_xi.xi));
     case ArgType::kImmediate:
         if (ref_kinds & kRef1ImmMask) {
-            if (static_cast<uint32_t>(lword) == ref_addr) {
+            if (static_cast<uint32_t>(arg.lword) == ref_addr) {
                 return snprintf(buf, bufsz, "#%s", label);
             } else {
                 // It has to be AFTER the label we are gonna reference here
-                assert(static_cast<uint32_t>(lword) > ref_addr);
-                return snprintf(buf, bufsz, "#%s+%d", label, lword - ref_addr);
+                assert(static_cast<uint32_t>(arg.lword) > ref_addr);
+                return snprintf(buf, bufsz, "#%s+%d", label, arg.lword - ref_addr);
             }
         } else if (imm_as_hex) {
-            return snprintf(buf, bufsz, "#0x%x", lword);
+            return snprintf(buf, bufsz, "#0x%x", arg.lword);
         } else {
-            return snprintf(buf, bufsz, "#%d", lword);
+            return snprintf(buf, bufsz, "#%d", arg.lword);
         }
     case ArgType::kRegMask:
     case ArgType::kRegMaskPredecrement:
-        return snprint_reg_mask(buf, bufsz, uword, type);
+        return snprint_reg_mask(buf, bufsz, arg.uword, arg.type);
     case ArgType::kDisplacement:
         if (ref_kinds & kRefRelMask) {
-            if (static_cast<uint32_t>(self_addr + lword) == ref_addr) {
+            if (static_cast<uint32_t>(self_addr + arg.lword) == ref_addr) {
                 return snprintf(buf, bufsz,  "%s", label);
             } else {
-                assert(static_cast<uint32_t>(self_addr + lword) > ref_addr);
-                return snprintf(buf, bufsz,  "%s+%d", label, (self_addr + lword) - ref_addr);
+                assert(static_cast<uint32_t>(self_addr + arg.lword) > ref_addr);
+                return snprintf(buf, bufsz,  "%s+%d", label, (self_addr + arg.lword) - ref_addr);
             }
         } else {
-            return snprintf(buf, bufsz,  ".%s%d", lword >= 0 ? "+" : "", lword);
+            return snprintf(buf, bufsz,  ".%s%d", arg.lword >= 0 ? "+" : "", arg.lword);
         }
     case ArgType::kCCR:
         return snprintf(buf, bufsz,  "%%ccr");
@@ -1929,8 +1921,9 @@ int Arg::SNPrint(
     return -1;
 }
 
-int Op::FPrint(
+int FPrintOp(
         FILE *const stream,
+        const Op &op,
         const char *const indent,
         const bool imm_as_hex,
         const RefKindMask ref_kinds,
@@ -1938,12 +1931,21 @@ int Op::FPrint(
         const char *const ref2_label,
         const uint32_t self_addr,
         const uint32_t ref1_addr,
-        const uint32_t ref2_addr) const
+        const uint32_t ref2_addr)
 {
-    assert(opcode != OpCode::kNone);
+    assert(op.opcode != OpCode::kNone);
     char mnemonic_str[kMnemonicBufferSize]{};
-    OpcodeSNPrintf(mnemonic_str, kMnemonicBufferSize, opcode, condition, size_spec);
-    if (arg1.type != ArgType::kNone) {
+    // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily consumes
+    // SBCD.B and others. That's why it is OpSize::kNone specifically for ABCD
+    // mnemonic. It is probably a bug in GNU AS.
+    const OpSize size_spec{(op.opcode == OpCode::kABCD) ? OpSize::kNone : op.size_spec};
+    snprintf(
+            mnemonic_str,
+            kMnemonicBufferSize,
+            "%s%s",
+            ToString(op.opcode, op.condition),
+            ToString(size_spec));
+    if (op.arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
         const RefKindMask ref1_kinds = ref_kinds & (kRef1Mask | kRefPcRelFix2Bytes);
         // It is useful to have immediate value printed as hex if destination
@@ -1951,23 +1953,25 @@ int Op::FPrint(
         // register. USP is not the case because it's value may be moved only to
         // or from An register.
         const bool imm_as_hex_2 = imm_as_hex ||
-            arg2.type == ArgType::kAn ||
-            arg2.type == ArgType::kCCR ||
-            arg2.type == ArgType::kSR;
-        arg1.SNPrint(
+            op.arg2.type == ArgType::kAn ||
+            op.arg2.type == ArgType::kCCR ||
+            op.arg2.type == ArgType::kSR;
+        SNPrintArg(
                 arg1_str,
                 kArgsBufferSize,
+                op.arg1,
                 imm_as_hex_2,
                 ref1_kinds,
                 ref1_label,
                 self_addr,
                 ref1_addr);
-        if (arg2.type != ArgType::kNone) {
+        if (op.arg2.type != ArgType::kNone) {
             char arg2_str[kArgsBufferSize]{};
             const RefKindMask ref2_kinds = ref_kinds & (kRef2Mask | kRefPcRelFix2Bytes);
-            arg2.SNPrint(
+            SNPrintArg(
                     arg2_str,
                     kArgsBufferSize,
+                    op.arg2,
                     false,
                     ref2_kinds,
                     ref2_label,
