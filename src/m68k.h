@@ -294,14 +294,6 @@ struct Arg {
         a.uword = instr;
         return a;
     }
-    int SNPrint(
-            char *buf,
-            size_t bufsz,
-            bool imm_as_hex = false,
-            RefKindMask ref_kinds = 0,
-            const char *label = nullptr,
-            uint32_t self_addr = 0,
-            uint32_t ref_addr = 0) const;
 };
 
 struct Op {
@@ -323,16 +315,6 @@ struct Op {
     {
         return Op::Typical(OpCode::kRaw, OpSize::kNone, Arg::Raw(instr));
     }
-    int FPrint(
-            FILE *,
-            const char *indent,
-            bool imm_as_hex,
-            RefKindMask ref_kinds = 0,
-            const char *ref1_label = nullptr,
-            const char *ref2_label = nullptr,
-            uint32_t self_addr = 0,
-            uint32_t ref1_addr = 0,
-            uint32_t ref2_addr = 0) const;
 };
 
 constexpr size_t kMnemonicBufferSize = 10;
@@ -341,4 +323,37 @@ constexpr size_t kArgsBufferSize = 80;
 static constexpr inline bool IsBRA(Op op)
 {
     return op.opcode == OpCode::kBcc && op.condition == Condition::kT;
+}
+
+int SNPrintArg(
+        char *buf,
+        size_t bufsz,
+        const Arg &,
+        bool imm_as_hex = false,
+        RefKindMask ref_kinds = 0,
+        const char *label = nullptr,
+        uint32_t self_addr = 0,
+        uint32_t ref_addr = 0);
+
+/// Return value means nothing and should be ignored
+int FPrintOp(
+        FILE *,
+        const Op &op,
+        const char *const indent,
+        const bool imm_as_hex,
+        RefKindMask ref_kinds = 0,
+        const char *ref1_label = nullptr,
+        const char *ref2_label = nullptr,
+        uint32_t self_addr = 0,
+        uint32_t ref1_addr = 0,
+        uint32_t ref2_addr = 0);
+
+constexpr size_t BaseInstructionSize(OpCode opcode)
+{
+    switch (opcode) {
+    case OpCode::kMOVEM:
+        return 2 * kInstructionSizeStepBytes;
+    default: break;
+    }
+    return kInstructionSizeStepBytes;
 }

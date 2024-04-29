@@ -74,9 +74,9 @@ constexpr RefKindMask kRef2DataMask = kRef2ReadMask | kRef2WriteMask; // For sec
 constexpr RefKindMask kRefReadMask = kRef1ReadMask | kRef2ReadMask; // For any argument
 constexpr RefKindMask kRefWriteMask = kRef1WriteMask | kRef2WriteMask; // For any argument
 constexpr RefKindMask kRefDataMask = kRefReadMask | kRefWriteMask;
-constexpr size_t kInstructionSizeStepBytes = 2;
-constexpr size_t kRomSizeBytes = 4 * 1024 * 1024;
-constexpr size_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStepBytes;
+constexpr uint32_t kInstructionSizeStepBytes = 2;
+constexpr uint32_t kRomSizeBytes = 4 * 1024 * 1024;
+constexpr uint32_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStepBytes;
 
 static inline constexpr size_t Min(size_t a, size_t b) { return a < b ? a : b; }
 
