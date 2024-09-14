@@ -80,20 +80,89 @@ constexpr uint32_t kDisasmMapSizeElements = kRomSizeBytes / kInstructionSizeStep
 
 static inline constexpr size_t Min(size_t a, size_t b) { return a < b ? a : b; }
 
-static inline constexpr uint16_t GetU16BE(const uint8_t *buffer)
+static inline constexpr uint16_t GetU16BE(const void *buffer)
 {
-    return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
+    const uint8_t *b = static_cast<const uint8_t *>(buffer);
+    return (static_cast<uint16_t>(b[0]) << 8) | static_cast<uint16_t>(b[1]);
 }
 
-static inline constexpr int16_t GetI16BE(const uint8_t *buffer)
+static inline constexpr uint16_t GetU16LE(const void *buffer)
 {
-    return (static_cast<uint16_t>(buffer[0]) << 8) | static_cast<uint16_t>(buffer[1]);
+    const uint8_t *b = static_cast<const uint8_t *>(buffer);
+    return (static_cast<uint16_t>(b[1]) << 8) | static_cast<uint16_t>(b[0]);
 }
 
-static inline constexpr int32_t GetI32BE(const uint8_t *buffer)
+static inline constexpr int16_t GetI16BE(const void *buffer)
 {
-    return (static_cast<uint32_t>(buffer[0]) << 24) |
-        (static_cast<uint32_t>(buffer[1]) << 16) |
-        (static_cast<uint32_t>(buffer[2]) << 8) |
-        static_cast<uint32_t>(buffer[3]);
+    return GetU16BE(buffer);
+}
+
+static inline constexpr int16_t GetI16LE(const void *buffer)
+{
+    return GetU16LE(buffer);
+}
+
+static inline constexpr uint32_t GetU32BE(const void *buffer)
+{
+    const uint8_t *b = static_cast<const uint8_t *>(buffer);
+    return (static_cast<uint32_t>(b[0]) << 24) |
+        (static_cast<uint32_t>(b[1]) << 16) |
+        (static_cast<uint32_t>(b[2]) << 8) |
+        static_cast<uint32_t>(b[3]);
+}
+
+static inline constexpr uint32_t GetU32LE(const void *buffer)
+{
+    const uint8_t *b = static_cast<const uint8_t *>(buffer);
+    return (static_cast<uint32_t>(b[3]) << 24) |
+        (static_cast<uint32_t>(b[2]) << 16) |
+        (static_cast<uint32_t>(b[1]) << 8) |
+        static_cast<uint32_t>(b[0]);
+}
+
+static inline constexpr int32_t GetI32BE(const void *buffer)
+{
+    return GetU32BE(buffer);
+}
+
+static inline constexpr int32_t GetI32LE(const void *buffer)
+{
+    return GetU32LE(buffer);
+}
+
+static constexpr inline uint8_t GetU8(const void *d)
+{
+    return *static_cast<const uint8_t *>(d);
+}
+
+static constexpr inline uint8_t GetU8(const void *d, bool is_big_endian)
+{
+    return (void)is_big_endian, GetU8(d);
+}
+
+static constexpr inline int8_t GetI8(const void *d) { return GetU8(d); }
+
+static constexpr inline int8_t GetI8(const void *d, bool is_big_endian)
+{
+    return (void)is_big_endian, GetI8(d);
+}
+
+static constexpr inline uint16_t GetU16(const void *d, bool is_big_endian)
+{
+    return is_big_endian ? GetU16BE(d) : GetU16LE(d);
+}
+
+static constexpr inline int16_t GetI16(const void *d, bool is_big_endian)
+{
+    return is_big_endian ? GetI16BE(d) : GetI16LE(d);
+}
+
+static constexpr inline uint32_t GetU32(const void *d, bool is_big_endian)
+{
+    return is_big_endian ? GetU32BE(d) : GetU32LE(d);
+}
+
+static constexpr inline int32_t GetI32(const void *d, bool is_big_endian)
+{
+    return is_big_endian ? GetI32BE(d) : GetI32LE(d);
 }

@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
 struct DataView {
     const uint8_t *const buffer{};
@@ -38,4 +39,5 @@ struct DataBuffer {
         return DataView{buffer + offset, Min(occupied_size - offset, size)};
     };
     ~DataBuffer();
+    static DataBuffer FromStream(FILE *stream);
 };

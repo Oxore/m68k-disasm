@@ -3,6 +3,8 @@
 /* SPDX-License-Identifier: Unlicense
  */
 
+#include "common.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -144,29 +146,6 @@ enum class Machine : uint16_t {
     kUnknown,
 };
 
-static constexpr inline uint8_t ParseU8(const uint8_t *d) { return *d; }
-
-static constexpr inline uint8_t ParseU8(const uint8_t *d, DataEncoding)
-{
-    return ParseU8(d);
-}
-
-static constexpr inline uint16_t ParseU16(const uint8_t *d, DataEncoding e)
-{
-    if (e == DataEncoding::k2MSB) {
-        return uint16_t(d[0]) << 8 | d[1];
-    }
-    return uint16_t(d[1]) << 8 | d[0];
-}
-
-static constexpr inline uint32_t ParseU32(const uint8_t *d, DataEncoding e)
-{
-    if (e == DataEncoding::k2MSB) {
-        return uint32_t(d[0]) << 24 | uint32_t(d[1]) << 16 | uint32_t(d[2]) << 8 | d[3];
-    }
-    return uint32_t(d[3]) << 24 | uint32_t(d[2]) << 16 | uint32_t(d[1]) << 8 | d[0];
-}
-
 static constexpr inline auto ParseObjectType(const uint16_t type)
 {
     switch (type) {
@@ -214,22 +193,23 @@ struct Header32Raw {
     static constexpr inline auto FromBytes(const uint8_t *data)
     {
         const auto ident = Ident32Raw::FromBytes(data);
-        const DataEncoding e = ParseDataEncoding(ident.data_encoding);
+        const bool be = DataEncoding::k2MSB == ParseDataEncoding(
+                ident.data_encoding);
         return Header32Raw{
             /* .ident */ ident,
-            /* .type */ ParseU16(data + kIdentSize + 0, e),
-            /* .machine */ ParseU16(data + kIdentSize + 2, e),
-            /* .version */ ParseU32(data + kIdentSize + 4, e),
-            /* .entry */ ParseU32(data + kIdentSize + 8, e),
-            /* .phoff */ ParseU32(data + kIdentSize + 12, e),
-            /* .shoff */ ParseU32(data + kIdentSize + 16, e),
-            /* .flags */ ParseU32(data + kIdentSize + 20, e),
-            /* .ehsize */ ParseU16(data + kIdentSize + 24, e),
-            /* .phentsize */ ParseU16(data + kIdentSize + 26, e),
-            /* .phnum */ ParseU16(data + kIdentSize + 28, e),
-            /* .shentsize */ ParseU16(data + kIdentSize + 30, e),
-            /* .shnum */ ParseU16(data + kIdentSize + 32, e),
-            /* .shstrndx */ ParseU16(data + kIdentSize + 34, e),
+            /* .type */ GetU16(data + kIdentSize + 0, be),
+            /* .machine */ GetU16(data + kIdentSize + 2, be),
+            /* .version */ GetU32(data + kIdentSize + 4, be),
+            /* .entry */ GetU32(data + kIdentSize + 8, be),
+            /* .phoff */ GetU32(data + kIdentSize + 12, be),
+            /* .shoff */ GetU32(data + kIdentSize + 16, be),
+            /* .flags */ GetU32(data + kIdentSize + 20, be),
+            /* .ehsize */ GetU16(data + kIdentSize + 24, be),
+            /* .phentsize */ GetU16(data + kIdentSize + 26, be),
+            /* .phnum */ GetU16(data + kIdentSize + 28, be),
+            /* .shentsize */ GetU16(data + kIdentSize + 30, be),
+            /* .shnum */ GetU16(data + kIdentSize + 32, be),
+            /* .shstrndx */ GetU16(data + kIdentSize + 34, be),
         };
     }
 };
@@ -315,15 +295,16 @@ struct ProgramHeader32 {
     uint32_t align;
     static constexpr inline auto FromBytes(const uint8_t *data, const DataEncoding e)
     {
+        const bool be = DataEncoding::k2MSB == e;
         return ProgramHeader32{
-            /* .type   = */ ParseU32(data + 0, e),
-            /* .offset = */ ParseU32(data + 4, e),
-            /* .vaddr  = */ ParseU32(data + 8, e),
-            /* .paddr  = */ ParseU32(data + 12, e),
-            /* .filesz = */ ParseU32(data + 16, e),
-            /* .memsz  = */ ParseU32(data + 20, e),
-            /* .flags  = */ ParseU32(data + 24, e),
-            /* .align  = */ ParseU32(data + 28, e),
+            /* .type   = */ GetU32(data + 0, be),
+            /* .offset = */ GetU32(data + 4, be),
+            /* .vaddr  = */ GetU32(data + 8, be),
+            /* .paddr  = */ GetU32(data + 12, be),
+            /* .filesz = */ GetU32(data + 16, be),
+            /* .memsz  = */ GetU32(data + 20, be),
+            /* .flags  = */ GetU32(data + 24, be),
+            /* .align  = */ GetU32(data + 28, be),
         };
     }
 };
@@ -360,17 +341,18 @@ struct SectionHeader32 {
     uint32_t entsize{}; ///< Size of a single entry (every entry has same size)
     static constexpr inline auto FromBytes(const uint8_t *data, const DataEncoding e)
     {
+        const bool be = DataEncoding::k2MSB == e;
         return SectionHeader32{
-            /* .name      = */ ParseU32(data + 0, e),
-            /* .type      = */ ParseU32(data + 4, e),
-            /* .flags     = */ ParseU32(data + 8, e),
-            /* .addr      = */ ParseU32(data + 12, e),
-            /* .offset    = */ ParseU32(data + 16, e),
-            /* .size      = */ ParseU32(data + 20, e),
-            /* .link      = */ ParseU32(data + 24, e),
-            /* .info      = */ ParseU32(data + 28, e),
-            /* .addralign = */ ParseU32(data + 32, e),
-            /* .entsize   = */ ParseU32(data + 36, e),
+            /* .name      = */ GetU32(data + 0, be),
+            /* .type      = */ GetU32(data + 4, be),
+            /* .flags     = */ GetU32(data + 8, be),
+            /* .addr      = */ GetU32(data + 12, be),
+            /* .offset    = */ GetU32(data + 16, be),
+            /* .size      = */ GetU32(data + 20, be),
+            /* .link      = */ GetU32(data + 24, be),
+            /* .info      = */ GetU32(data + 28, be),
+            /* .addralign = */ GetU32(data + 32, be),
+            /* .entsize   = */ GetU32(data + 36, be),
         };
     }
     constexpr bool IsValid(void) const { return name != 0; }
@@ -417,8 +399,8 @@ enum class Symbol32Type: unsigned char {
 struct Symbol32 {
     const char *name{};
     uint32_t namendx{};
-    Address value{}; ///< Value or address, e.g address of a variable in RAM
-    uint32_t size{}; ///< Size of a symbol, e.g length of a function, etc.
+    Address value{}; ///< Value or address, be.g address of a variable in RAM
+    uint32_t size{}; ///< Size of a symbol, be.g length of a function, etc.
     unsigned char info{};
     unsigned char other{};
     uint16_t shndx{}; ///< Index of a section the symbol belongs to
@@ -432,14 +414,15 @@ struct Symbol32 {
     }
     static constexpr inline auto FromBytes(const uint8_t *data, const DataEncoding e)
     {
+        const bool be = DataEncoding::k2MSB == e;
         return Symbol32{
             /* .name    = */ nullptr,
-            /* .namendx = */ ParseU32(data + 0, e),
-            /* .value   = */ ParseU32(data + 4, e),
-            /* .size    = */ ParseU32(data + 8, e),
-            /* .info    = */ ParseU8(data + 12, e),
-            /* .other   = */ ParseU8(data + 13, e),
-            /* .shndx   = */ ParseU16(data + 14, e),
+            /* .namendx = */ GetU32(data + 0, be),
+            /* .value   = */ GetU32(data + 4, be),
+            /* .size    = */ GetU32(data + 8, be),
+            /* .info    = */ GetU8(data + 12, be),
+            /* .other   = */ GetU8(data + 13, be),
+            /* .shndx   = */ GetU16(data + 14, be),
         };
     }
 };

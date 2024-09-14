@@ -3,7 +3,7 @@
 /* SPDX-License-Identifier: Unlicense
  */
 
-#include "elf_format.h"
+#include "elf.h"
 #include "data_buffer.h"
 
 #include <cstdlib>
