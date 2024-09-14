@@ -639,34 +639,6 @@ static void ParseTraceData(DisasmMap &disasm_map, const DataView &trace_data)
     }
 }
 
-static size_t ReadFromStream(DataBuffer &db, FILE *stream)
-{
-    assert(db.buffer && db.buffer_size >= db.kInitialSize);
-    while (1) {
-        const size_t read_size = db.buffer_size - db.occupied_size;
-        const size_t fread_ret = fread(
-                db.buffer + db.occupied_size, sizeof(*db.buffer), read_size, stream);
-        db.occupied_size += fread_ret;
-        if (fread_ret >= db.buffer_size) {
-            assert(fread_ret == db.buffer_size);
-            db.Expand(db.buffer_size * 2);
-        } else {
-            const int err = errno;
-            if (feof(stream)) {
-                break;
-            } else if (ferror(stream)) {
-                fprintf(stderr, "ReadFromStream: fread(%zu): Error (%d): \"%s\"\n", read_size, err, strerror(err));
-                return EXIT_FAILURE;
-            } else if (db.buffer_size == db.occupied_size) {
-                db.Expand(db.buffer_size * 2);
-            } else {
-                assert(false);
-            }
-        }
-    }
-    return db.occupied_size;
-}
-
 static DisasmMap *NewDisasmMap(FILE *trace_stream)
 {
     if (trace_stream == nullptr) {
@@ -675,10 +647,11 @@ static DisasmMap *NewDisasmMap(FILE *trace_stream)
         return disasm_map;
     }
     // Read trace file into buffer
-    DataBuffer trace_data{};
-    const size_t trace_size = ReadFromStream(trace_data, trace_stream);
+    auto trace_data = DataBuffer::FromStream(trace_stream);
+    const size_t trace_size = trace_data.occupied_size;
     if (trace_size == 0) {
-        fprintf(stderr, "ReadFromStream(trace_data, trace_stream): Error: No data has been read\n");
+        fprintf(stderr, "DataBuffer::FromStream(trace_data, trace_stream): "
+                "Error: No data has been read\n");
         return nullptr;
     }
     // Parse trace file into map
@@ -692,10 +665,11 @@ static int M68kDisasm(
         FILE *input_stream, FILE *output_stream, FILE *trace_stream, const Settings &s)
 {
     // Read input file into buffer
-    DataBuffer input{};
-    const size_t input_size = ReadFromStream(input, input_stream);
+    auto input = DataBuffer::FromStream(input_stream);
+    const size_t input_size = input.occupied_size;
     if (input_size == 0) {
-        fprintf(stderr, "ReadFromStream(input, input_stream): Error: No data has been read\n");
+        fprintf(stderr, "DataBuffer::FromStream(input, input_stream): "
+                "Error: No data has been read\n");
         return EXIT_FAILURE;
     }
     const ELF::Image elf(static_cast<DataBuffer&&>(input));
@@ -803,6 +777,7 @@ static void PrintUsage(FILE *s, const char *argv0)
     "                        automatically if not set. Only `auto`, `binary` and\n"
     "                        `elf` are currently supported.\n"
     "  <input_file_name>     Binary or elf file with the machine code to disassemble\n"
+    "                        ('-' means stdin).\n"
     "Feature flags:\n"
     "  rdc                   Print raw data comment for traced locations.\n"
     "  rdc-all               Print raw data comment for every location (requires\n"
