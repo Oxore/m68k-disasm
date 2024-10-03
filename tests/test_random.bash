@@ -30,7 +30,7 @@ run_test_random() {
   echo -ne "Test random, pass ${pass_number}... "
   dd if=/dev/urandom of=${file_orig_bin} bs=1024 count=${blocks_count} >/dev/null 2>&1
   ${DISASM} -o ${file_asm} ${file_orig_bin}
-  ${AS} -o ${file_as_o} ${file_asm}
+  ${AS} -m68000 -o ${file_as_o} ${file_asm}
   ${LD} -o ${file_as_elf} ${file_as_o}
   ${OBJCOPY} ${file_as_elf} -O binary ${file_as_bin}
   if ! cmp ${file_orig_bin} ${file_as_bin}; then

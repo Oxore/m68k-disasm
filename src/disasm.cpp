@@ -182,8 +182,11 @@ void DisasmMap::Disasm(
         } else {
             node = &insertNode(at, NodeType::kTracedInstruction);
         }
-        if (node->op.opcode == OpCode::kNone || inside_code_span) {
-            const auto size = node->Disasm(code);
+        const bool perform_disasm = node->op.opcode == OpCode::kNone ||
+                (_type == DisasmMapType::kRaw && node->op.opcode == OpCode::kRaw) ||
+                inside_code_span;
+        if (perform_disasm) {
+            const auto size = node->Disasm(code, s);
             assert(size >= kInstructionSizeStepBytes);
             if (canBeAllocated(*node)) {
                 // Spread across the size

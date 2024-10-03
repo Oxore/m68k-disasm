@@ -28,25 +28,35 @@ enum class ShiftKind: int {
     kRotate = 3,
 };
 
-constexpr Arg FetchImmediate(const uint32_t address, const DataView &code, const OpSize s)
+constexpr Arg FetchImmediate(
+        const uint32_t address, const DataView &code, const Settings &s, const OpSize opsize)
 {
-    if (s == OpSize::kInvalid) {
+    if (opsize == OpSize::kInvalid) {
         return Arg{};
-    } else if (s == OpSize::kLong) {
+    } else if (opsize == OpSize::kLong) {
         if (address + kInstructionSizeStepBytes < code.size) {
             const int32_t value = GetI32BE(code.buffer + address);
             return Arg::Immediate(value);
         }
     } else if (address < code.size) {
         const int16_t value = GetI16BE(code.buffer + address);
-        if (s == OpSize::kByte) {
+        if (opsize == OpSize::kByte) {
+            if (s.target_asm == TargetAssembler::kSierraAsm68) {
+                // Sierra does not allow 0xffffffffxx as negative value for byte
+                // size operations. It basically never fills the high byte in
+                // this case.
+                if (uint16_t(value) & 0xff00u) {
+                    return Arg::ImmediateInvalid(uint16_t(value) & 0xffu);
+                }
+                return Arg::Immediate(int8_t(uint16_t(value) & 0xffu));
+            }
             // Technically it is impossible to have value lower that -128 in 8
             // bits signed integer, but the second byte being 0xff is actually
             // a valid thing and it is how values from -255 to -129 are
             // represented.
             if (value > 255 || value < -255) {
                 // Invalid immediate value for instruction with .b suffix
-                return Arg{};
+                return Arg::ImmediateInvalid(value);
             }
         }
         return Arg::Immediate(value);
@@ -55,7 +65,12 @@ constexpr Arg FetchImmediate(const uint32_t address, const DataView &code, const
 }
 
 constexpr Arg FetchArg(
-        const uint32_t address, const DataView &code, const int m, const int xn, const OpSize s)
+        const uint32_t address,
+        const DataView &code,
+        const Settings &s,
+        const int m,
+        const int xn,
+        const OpSize opsize)
 {
     switch (m) {
     case 0: // Dn
@@ -71,6 +86,9 @@ constexpr Arg FetchArg(
     case 5: // (d16, An), Additional Word
         if (address < code.size) {
             const int16_t d16 = GetI16BE(code.buffer + address);
+            if (s.target_asm == TargetAssembler::kSierraAsm68 && d16 == 0) {
+                return Arg::D16AnAddrInvalid(xn, d16);
+            }
             return Arg::D16AnAddr(xn, d16);
         }
         break;
@@ -125,7 +143,7 @@ constexpr Arg FetchArg(
             }
             break;
         case 4: // #imm
-            return FetchImmediate(address, code, s);
+            return FetchImmediate(address, code, s, opsize);
         case 5: // Does not exist
         case 6: // Does not exist
         case 7: // Does not exist
@@ -137,12 +155,16 @@ constexpr Arg FetchArg(
 }
 
 static Arg FetchArg(
-        const uint32_t address, const DataView &code, const uint16_t instr, const OpSize s)
+        const uint32_t address,
+        const DataView &code,
+        const Settings &s,
+        const uint16_t instr,
+        const OpSize opsize)
 {
     const int addrmode = instr & 0x3f;
     const int m = (addrmode >> 3) & 7;
     const int xn = addrmode & 7;
-    return FetchArg(address, code, m, xn, s);
+    return FetchArg(address, code, s, m, xn, opsize);
 }
 
 static size_t disasm_verbatim(DisasmNode &node, const uint16_t instr)
@@ -152,10 +174,10 @@ static size_t disasm_verbatim(DisasmNode &node, const uint16_t instr)
 }
 
 static size_t disasm_jsr_jmp(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const OpSize opsize = OpSize::kWord;
-    const auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, instr, opsize);
+    const auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn: // 4e80..4e87 / 4ec0..4ec7
@@ -219,7 +241,7 @@ static size_t disasm_ext(DisasmNode &node, const OpSize opsize, const Arg arg)
 }
 
 static size_t disasm_ext_movem(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const auto dir = static_cast<MoveDirection>((instr >> 10) & 1);
     const unsigned m = (instr >> 3) & 7;
@@ -238,7 +260,7 @@ static size_t disasm_ext_movem(
         return disasm_verbatim(node, instr);
     }
     const auto a = FetchArg(
-            node.address + kInstructionSizeStepBytes * 2, code, m, xn, opsize);
+            node.address + kInstructionSizeStepBytes * 2, code, s, m, xn, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn: // 4880..4887 / 4c80..4c87 / 48c0..48c7 / 4cc0..4cc7
@@ -299,11 +321,11 @@ static size_t disasm_ext_movem(
 }
 
 static size_t disasm_lea(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const OpSize opsize = OpSize::kLong;
     const auto addr = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
     case AddrMode::kDn:
@@ -339,11 +361,11 @@ static size_t disasm_lea(
 }
 
 static size_t disasm_chk(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const OpSize opsize = OpSize::kWord;
     const auto src = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -371,7 +393,7 @@ static size_t disasm_chk(
 }
 
 static size_t disasm_bra_bsr_bcc(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings& s)
 {
     const int16_t dispmt0 = static_cast<int8_t>(instr & 0xff);
     if (dispmt0 == -1) {
@@ -393,10 +415,19 @@ static size_t disasm_bra_bsr_bcc(
         ? dispmt0 : GetI16BE(code.buffer + node.address + kInstructionSizeStepBytes));
     const uint32_t ref_addr = static_cast<uint32_t>(node.address + dispmt);
     Condition condition = static_cast<Condition>((instr >> 8) & 0xf);
-    // False condition Indicates BSR
-    node.ref1_addr = ref_addr;
-    node.ref_kinds = kRef1RelMask | ((condition == Condition::kF) ? kRefCallMask : 0);
-    node.op = Op{OpCode::kBcc, opsize, condition, Arg::Displacement(dispmt)};
+    // "short branch to next instruction is illegal" in Sierra.
+    const bool branch_to_next = dispmt == kInstructionSizeStepBytes;
+    // Sierra wont take odd displacement and will spit out the following:
+    // "branch to/from odd address: destination address is odd"
+    const bool odd = dispmt % int16_t(2);
+    if (s.target_asm == TargetAssembler::kSierraAsm68 && (branch_to_next || odd)) {
+        node.op = Op{OpCode::kBcc, opsize, condition, Arg::DisplacementInvalid(dispmt)};
+    } else {
+        node.ref1_addr = ref_addr;
+        // False condition Indicates BSR
+        node.ref_kinds = kRef1RelMask | ((condition == Condition::kF) ? kRefCallMask : 0);
+        node.op = Op{OpCode::kBcc, opsize, condition, Arg::Displacement(dispmt)};
+    }
     return node.size;
 }
 
@@ -413,14 +444,14 @@ static OpCode OpCodeForBitOps(const unsigned opcode)
 }
 
 static size_t disasm_movep(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const unsigned dn = ((instr >> 9) & 7);
     const unsigned an = instr & 7;
     const OpSize opsize = ((instr >> 6) & 1) ? OpSize::kLong : OpSize::kWord;
     const auto dir = static_cast<MoveDirection>(!((instr >> 7) & 1));
     const auto addr = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, 5, an, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, 5, an, opsize);
     if (addr.mode == AddrMode::kInvalid) {
         // Boundary check failed, most likely
         return disasm_verbatim(node, instr);
@@ -439,11 +470,12 @@ static size_t disasm_src_arg_bitops_movep(
         DisasmNode &node,
         const uint16_t instr,
         const DataView &code,
+        const Settings &s,
         const bool has_dn_src = true)
 {
     const unsigned m = (instr >> 3) & 7;
     if ((m == 1) && has_dn_src) {
-        return disasm_movep(node, instr, code);
+        return disasm_movep(node, instr, code, s);
     }
     const unsigned dn = ((instr >> 9) & 7);
     const unsigned xn = instr & 7;
@@ -453,6 +485,7 @@ static size_t disasm_src_arg_bitops_movep(
     const auto src = FetchArg(
             node.address + kInstructionSizeStepBytes,
             code,
+            s,
             (has_dn_src) ? 0 : 7,
             dn,
             opsize0);
@@ -465,8 +498,8 @@ static size_t disasm_src_arg_bitops_movep(
         assert(dn == 4);
         assert(src.mode == AddrMode::kImmediate);
     }
-    const auto dst = FetchArg(
-            node.address + kInstructionSizeStepBytes + src.Size(opsize0), code, m, xn, opsize0);
+    const uint32_t addr = node.address + kInstructionSizeStepBytes + src.Size(opsize0);
+    const auto dst = FetchArg(addr, code, s, m, xn, opsize0);
     const unsigned opcode = (instr >> 6) & 3;
     switch (dst.mode) {
     case AddrMode::kInvalid:
@@ -498,12 +531,12 @@ static size_t disasm_src_arg_bitops_movep(
     return node.size = kInstructionSizeStepBytes + src.Size(opsize0) + dst.Size(opsize0);
 }
 
-static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataView &c)
+static size_t disasm_bitops(DisasmNode &n, const uint16_t i, const DataView &c, const Settings &s)
 {
-    return disasm_src_arg_bitops_movep(n, i, c, false);
+    return disasm_src_arg_bitops_movep(n, i, c, s, false);
 }
 
-static size_t disasm_logical_immediate_to(
+static size_t disasm_logical_immediate_to_ccr_or_sr(
         DisasmNode &node, OpCode opcode, OpSize opsize, Arg imm)
 {
     node.op = Op::Typical(opcode, opsize, imm, (opsize == OpSize::kByte) ? Arg::CCR() : Arg::SR());
@@ -527,11 +560,11 @@ static OpCode OpCodeForLogicalImmediate(const unsigned opcode)
 }
 
 static size_t disasm_bitops_movep(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const bool has_source_reg = (instr >> 8) & 1;
     if (has_source_reg) {
-        return disasm_src_arg_bitops_movep(node, instr, code);
+        return disasm_src_arg_bitops_movep(node, instr, code, s);
     }
     const unsigned opcode = (instr >> 9) & 7;
     if (opcode == 7) {
@@ -539,7 +572,7 @@ static size_t disasm_bitops_movep(
         return disasm_verbatim(node, instr);
     }
     if (opcode == 4) {
-        return disasm_bitops(node, instr, code);
+        return disasm_bitops(node, instr, code, s);
     }
     const int m = (instr >> 3) & 7;
     const int xn = instr & 7;
@@ -560,17 +593,17 @@ static size_t disasm_bitops_movep(
             return disasm_verbatim(node, instr);
         }
     }
-    const auto src = FetchImmediate(node.address + kInstructionSizeStepBytes, code, opsize);
+    auto src = FetchImmediate(node.address + kInstructionSizeStepBytes, code, s, opsize);
     if (src.mode == AddrMode::kInvalid) {
         return disasm_verbatim(node, instr);
     }
     assert(src.mode == AddrMode::kImmediate);
     const OpCode mnemonic = OpCodeForLogicalImmediate(opcode);
     if (m == 7 && xn == 4) {
-        return disasm_logical_immediate_to(node, mnemonic, opsize, src);
+        return disasm_logical_immediate_to_ccr_or_sr(node, mnemonic, opsize, src);
     }
-    const auto dst = FetchArg(
-            node.address + kInstructionSizeStepBytes + src.Size(opsize), code, m, xn, opsize);
+    auto dst = FetchArg(
+            node.address + kInstructionSizeStepBytes + src.Size(opsize), code, s, m, xn, opsize);
     switch (dst.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -588,26 +621,41 @@ static size_t disasm_bitops_movep(
         break;
     case AddrMode::kD16PCAddr:
     case AddrMode::kD8PCXiAddr:
-        if (opcode != 6) {
-            // PC relative destination address argument available for CMPI only
-            return disasm_verbatim(node, instr);
-        }
+        // According to "The 68000 Instruction Set" documentation I own, PC
+        // relative destination address argument *is* available for CMPI and for
+        // CMPI only, but neither GNU nor Sierra allow it for 68000 ISA. GNU AS
+        // considers it to be a feature of 68020, which is currently not
+        // supported.
+        //
+        // Hence, if 68020 will ever be supported, the next line should be
+        // wrapped with conditional expression based on an ISA choice.
+        dst.is_invalid = true;
         break;
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
+    }
+    if (s.target_asm == TargetAssembler::kSierraAsm68) {
+        // For ADDI and SUBI Sierra will emit ADDQ and SUBQ if immediate value
+        // is positive and is less than or equal 8, i.e. if it fits ADDQ or SUBQ
+        // respectively.
+        if (mnemonic == OpCode::kADDI || mnemonic == OpCode::kSUBI) {
+            if (src.lword > 0 && src.lword <= 8) {
+                src.is_invalid = true;
+            }
+        }
     }
     node.op = Op::Typical(mnemonic, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
 static size_t disasm_move_movea(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const int opsize_raw = (instr >> 12) & 3;
     const OpSize opsize = (opsize_raw == 1)
         ? OpSize::kByte : (opsize_raw == 3 ? OpSize::kWord : OpSize::kLong);
     const auto src = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -641,7 +689,7 @@ static size_t disasm_move_movea(
     const int m = (instr >> 6) & 7;
     const int xn = (instr >> 9) & 7;
     const auto dst = FetchArg(
-            node.address + kInstructionSizeStepBytes + src.Size(opsize), code, m, xn, opsize);
+            node.address + kInstructionSizeStepBytes + src.Size(opsize), code, s, m, xn, opsize);
     switch (dst.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -685,11 +733,11 @@ static size_t disasm_move_movea(
 }
 
 static size_t disasm_move_from_sr(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const auto opsize = OpSize::kWord;
     const auto dst = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (dst.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -715,11 +763,15 @@ static size_t disasm_move_from_sr(
 }
 
 static size_t disasm_move_to(
-        DisasmNode &node, const uint16_t instr, const DataView &code, const ArgType reg)
+        DisasmNode &node,
+        const uint16_t instr,
+        const DataView &code,
+        const Settings &s,
+        const ArgType reg)
 {
     const auto opsize = OpSize::kWord;
     const auto src = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -739,7 +791,7 @@ static size_t disasm_move_to(
     case AddrMode::kImmediate:
         break;
     }
-    node.op = Op::Typical(OpCode::kMOVE, opsize, src, Arg{{reg}, {0}});
+    node.op = Op::Typical(OpCode::kMOVE, opsize, src, Arg{{reg}, false, {0}});
     return node.size = kInstructionSizeStepBytes + src.Size(opsize);
 }
 
@@ -756,26 +808,26 @@ static OpCode opcode_for_negx_clr_neg_not(const unsigned opcode)
 }
 
 static size_t disasm_move_negx_clr_neg_not(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     const unsigned opcode = (instr >> 9) & 3;
     if (opsize == OpSize::kInvalid) {
         switch (opcode) {
         case 0:
-            return disasm_move_from_sr(node, instr, code);
+            return disasm_move_from_sr(node, instr, code, s);
         case 1:
             return disasm_verbatim(node, instr);
         case 2:
-            return disasm_move_to(node, instr, code, ArgType::kCCR);
+            return disasm_move_to(node, instr, code, s, ArgType::kCCR);
         case 3:
-            return disasm_move_to(node, instr, code, ArgType::kSR);
+            return disasm_move_to(node, instr, code, s, ArgType::kSR);
         }
         assert(false);
         return disasm_verbatim(node, instr);
     }
     const auto a = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -808,11 +860,11 @@ static size_t disasm_trivial(
 }
 
 static size_t disasm_tas(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const auto opsize = OpSize::kByte;
     const auto a = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -838,7 +890,7 @@ static size_t disasm_tas(
 }
 
 static size_t disasm_tst_tas_illegal(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     const int m = (instr >> 3) & 7;
@@ -847,9 +899,9 @@ static size_t disasm_tst_tas_illegal(
         if (m == 7 && xn == 4){
             return disasm_trivial(node, OpCode::kILLEGAL);
         }
-        return disasm_tas(node, instr, code);
+        return disasm_tas(node, instr, code, s);
     }
-    const auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, m, xn, opsize);
+    auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, s, m, xn, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -864,8 +916,17 @@ static size_t disasm_tst_tas_illegal(
     case AddrMode::kD8AnXiAddr:
     case AddrMode::kWord:
     case AddrMode::kLong:
+        break;
     case AddrMode::kD16PCAddr:
     case AddrMode::kD8PCXiAddr:
+        // According to "The 68000 Instruction Set" documentation I own, PC
+        // relative destination address argument *is* available for TST, but
+        // neither GNU nor Sierra allow it for 68000 ISA. GNU AS considers it to
+        // be a feature of 68020, which is currently not supported.
+        //
+        // Hence, if 68020 will ever be supported, the next line should be
+        // wrapped with conditional expression based on an ISA choice.
+        a.is_invalid = true;
         break;
     case AddrMode::kImmediate:
         return disasm_verbatim(node, instr);
@@ -881,7 +942,8 @@ static size_t disasm_trap(DisasmNode &node, const uint16_t instr)
     return node.size = kInstructionSizeStepBytes;
 }
 
-static size_t disasm_link_unlink(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_link_unlink(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const bool unlk = (instr >> 3) & 1;
     const unsigned xn = instr & 7;
@@ -890,7 +952,8 @@ static size_t disasm_link_unlink(DisasmNode &node, const uint16_t instr, const D
         return node.size = kInstructionSizeStepBytes;
     }
     const auto opsize = OpSize::kWord;
-    const auto src = FetchImmediate(node.address + kInstructionSizeStepBytes, code, opsize);
+    const auto src = FetchImmediate(
+            node.address + kInstructionSizeStepBytes, code, s, opsize);
     if (src.mode != AddrMode::kImmediate) {
         return disasm_verbatim(node, instr);
     }
@@ -912,12 +975,13 @@ static size_t disasm_move_usp(DisasmNode &node, const uint16_t instr)
     return node.size = kInstructionSizeStepBytes;
 }
 
-static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_nbcd_swap_pea(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const bool is_nbcd = !((instr >> 6) & 1);
     const OpSize opsize0 = OpSize::kWord;
     const auto arg = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize0);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize0);
     bool is_swap{};
     switch (arg.mode) {
     case AddrMode::kInvalid:
@@ -965,9 +1029,10 @@ static size_t disasm_nbcd_swap_pea(DisasmNode &node, const uint16_t instr, const
     return node.size = kInstructionSizeStepBytes + arg.Size(opsize0);
 }
 
-static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_stop(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
-    const auto a = FetchImmediate(node.address + kInstructionSizeStepBytes, code, OpSize::kWord);
+    const auto a = FetchImmediate(node.address + kInstructionSizeStepBytes, code, s, OpSize::kWord);
     if (a.mode != AddrMode::kImmediate) {
         return disasm_verbatim(node, instr);
     }
@@ -975,19 +1040,20 @@ static size_t disasm_stop(DisasmNode &node, const uint16_t instr, const DataView
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
-static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_chunk_4(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     if ((instr & 0xf900) == 0x4000) {
-        return disasm_move_negx_clr_neg_not(node, instr, code);
+        return disasm_move_negx_clr_neg_not(node, instr, code, s);
     } else if ((instr & 0xff80) == 0x4800) {
         // NOTE: EXT is handled with MOVEM
-        return disasm_nbcd_swap_pea(node, instr, code);
+        return disasm_nbcd_swap_pea(node, instr, code, s);
     } else if ((instr & 0xff00) == 0x4a00) {
-        return disasm_tst_tas_illegal(node, instr, code);
+        return disasm_tst_tas_illegal(node, instr, code, s);
     } else if ((instr & 0xfff0) == 0x4e40) {
         return disasm_trap(node, instr);
     } else if ((instr & 0xfff0) == 0x4e50) {
-        return disasm_link_unlink(node, instr, code);
+        return disasm_link_unlink(node, instr, code, s);
     } else if ((instr & 0xfff0) == 0x4e60) {
         return disasm_move_usp(node, instr);
     } else if ((instr & 0xfff8) == 0x4e70) {
@@ -996,7 +1062,7 @@ static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataV
         } else if (instr == 0x4e71) {
             return disasm_trivial(node, OpCode::kNOP);
         } else if (instr == 0x4e72) {
-            return disasm_stop(node, instr, code);
+            return disasm_stop(node, instr, code, s);
         } else if (instr == 0x4e73) {
             return disasm_trivial(node, OpCode::kRTE);
         } else if (instr == 0x4e75) {
@@ -1007,21 +1073,25 @@ static size_t disasm_chunk_4(DisasmNode &node, const uint16_t instr, const DataV
             return disasm_trivial(node, OpCode::kRTR);
         }
     } else if ((instr & 0xff80) == 0x4e80) {
-        return disasm_jsr_jmp(node, instr, code);
+        return disasm_jsr_jmp(node, instr, code, s);
     } else if ((instr & 0xfb80) == 0x4880) {
-        return disasm_ext_movem(node, instr, code);
+        return disasm_ext_movem(node, instr, code, s);
     } else if ((instr & 0xf1c0) == 0x41c0) {
-        return disasm_lea(node, instr, code);
+        return disasm_lea(node, instr, code, s);
     } else if ((instr & 0xf1c0) == 0x4180) {
-        return disasm_chk(node, instr, code);
+        return disasm_chk(node, instr, code, s);
     }
     return disasm_verbatim(node, instr);
 }
 
 static size_t disasm_addq_subq(
-        DisasmNode &node, const uint16_t instr, const DataView &code, const OpSize opsize)
+        DisasmNode &node,
+        const uint16_t instr,
+        const DataView &code,
+        const Settings &s,
+        const OpSize opsize)
 {
-    const auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, instr, opsize);
+    const auto a = FetchArg(node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1054,13 +1124,18 @@ static size_t disasm_addq_subq(
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
-static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_dbcc(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     if (node.address + kInstructionSizeStepBytes >= code.size) {
         return disasm_verbatim(node, instr);
     }
     const int16_t dispmt_raw = GetI16BE(code.buffer + node.address + kInstructionSizeStepBytes);
     const int32_t dispmt = dispmt_raw + kInstructionSizeStepBytes;
+    // Sierra wont take odd displacement and will spit out the following:
+    // "branch to/from odd address: destination address is odd"
+    const bool invalid_dispmt = (s.target_asm == TargetAssembler::kSierraAsm68) &&
+        (dispmt % int32_t(2));
     node.ref2_addr = static_cast<uint32_t>(node.address + dispmt);
     node.ref_kinds = kRef2RelMask;
     node.op = Op{
@@ -1068,23 +1143,24 @@ static size_t disasm_dbcc(DisasmNode &node, const uint16_t instr, const DataView
         OpSize::kWord,
         static_cast<Condition>((instr >> 8) & 0xf),
         Arg::AddrModeXn(ArgType::kDn, (instr & 7)),
-        Arg::Displacement(dispmt),
+        invalid_dispmt ? Arg::DisplacementInvalid(dispmt) : Arg::Displacement(dispmt),
     };
     return node.size = kInstructionSizeStepBytes * 2;
 }
 
-static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_scc_dbcc(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const OpSize opsize = OpSize::kWord;
     const auto a = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (a.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
     case AddrMode::kDn: // 5xc0..5xc7, Dn
         break;
     case AddrMode::kAn: // 5xc8..5xcf, An
-        return disasm_dbcc(node, instr, code);
+        return disasm_dbcc(node, instr, code, s);
     case AddrMode::kAnAddr: // 5xd0..5xd7
     case AddrMode::kAnAddrIncr: // 5xd8..5xdf
     case AddrMode::kAnAddrDecr: // 5xe0..5xe7
@@ -1103,13 +1179,14 @@ static size_t disasm_scc_dbcc(DisasmNode &node, const uint16_t instr, const Data
     return node.size = kInstructionSizeStepBytes + a.Size(opsize);
 }
 
-static size_t disasm_addq_subq_scc_dbcc(DisasmNode &n, const uint16_t instr, const DataView &c)
+static size_t disasm_addq_subq_scc_dbcc(
+        DisasmNode &n, const uint16_t instr, const DataView &c, const Settings &s)
 {
     const auto opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_scc_dbcc(n, instr, c);
+        return disasm_scc_dbcc(n, instr, c, s);
     }
-    return disasm_addq_subq(n, instr, c, opsize);
+    return disasm_addq_subq(n, instr, c, s, opsize);
 }
 
 static size_t disasm_moveq(DisasmNode &node, const uint16_t instr)
@@ -1130,11 +1207,12 @@ static size_t disasm_divu_divs_mulu_muls(
         DisasmNode &node,
         const uint16_t instr,
         const DataView &code,
+        const Settings &s,
         const OpCode opcode)
 {
     const auto opsize = OpSize::kWord;
     const auto src = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1180,12 +1258,13 @@ static size_t disasm_or_and(
         DisasmNode &node,
         const uint16_t instr,
         const DataView &code,
+        const Settings &s,
         const OpSize opsize,
         const OpCode opcode)
 {
     const bool dir_to_addr = (instr >> 8) & 1;
     const auto addr = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1229,7 +1308,7 @@ static size_t disasm_or_and(
 }
 
 static size_t disasm_divu_divs_sbcd_or(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     // Also ensures that opsize == OpSize::kByte, i.e. 0b00
     if ((instr & 0x1f0) == 0x100) {
@@ -1239,17 +1318,21 @@ static size_t disasm_divu_divs_sbcd_or(
     if (opsize == OpSize::kInvalid) {
         const bool is_signed = (instr >> 8) & 1;
         const auto opcode = is_signed ? OpCode::kDIVS : OpCode::kDIVU;
-        return disasm_divu_divs_mulu_muls(node, instr, code, opcode);
+        return disasm_divu_divs_mulu_muls(node, instr, code, s, opcode);
     }
-    return disasm_or_and(node, instr, code, opsize, OpCode::kOR);
+    return disasm_or_and(node, instr, code, s, opsize, OpCode::kOR);
 }
 
 static size_t disasm_adda_suba_cmpa(
-        DisasmNode &node, const uint16_t instr, const DataView &code, const OpCode opcode)
+        DisasmNode &node,
+        const uint16_t instr,
+        const DataView &code,
+        const Settings &s,
+        const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>(((instr >> 8) & 1) + 1);
     const auto src = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (src.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1277,12 +1360,13 @@ static size_t disasm_add_sub_cmp(
         DisasmNode &node,
         const uint16_t instr,
         const DataView &code,
+        const Settings &s,
         const OpCode opcode,
         const OpSize opsize,
         const bool dir_to_addr)
 {
     const auto addr = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1354,11 +1438,12 @@ static size_t disasm_cmpm(DisasmNode &node, const uint16_t instr)
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
-static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_eor(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     const auto addr = FetchArg(
-            node.address + kInstructionSizeStepBytes, code, instr, opsize);
+            node.address + kInstructionSizeStepBytes, code, s, instr, opsize);
     switch (addr.mode) {
     case AddrMode::kInvalid:
         return disasm_verbatim(node, instr);
@@ -1386,21 +1471,21 @@ static size_t disasm_eor(DisasmNode &node, const uint16_t instr, const DataView 
 }
 
 static size_t disasm_eor_cmpm_cmp_cmpa(
-        DisasmNode &node, const uint16_t instr, const DataView &code)
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_adda_suba_cmpa(node, instr, code, OpCode::kCMPA);
+        return disasm_adda_suba_cmpa(node, instr, code, s, OpCode::kCMPA);
     }
     const bool dir_to_addr = ((instr >> 8) & 1);
     if (!dir_to_addr) {
-        return disasm_add_sub_cmp(node, instr, code, OpCode::kCMP, opsize, dir_to_addr);
+        return disasm_add_sub_cmp(node, instr, code, s, OpCode::kCMP, opsize, dir_to_addr);
     }
     const int m = (instr >> 3) & 7;
     if (m == 1) {
         return disasm_cmpm(node, instr);
     }
-    return disasm_eor(node, instr, code);
+    return disasm_eor(node, instr, code, s);
 }
 
 static size_t disasm_exg(DisasmNode &node, const uint16_t instr)
@@ -1416,14 +1501,13 @@ static size_t disasm_exg(DisasmNode &node, const uint16_t instr)
     const int xi = (instr >> 9) & 7;
     const auto src = (m == 3) ? Arg::An(xi) : Arg::Dn(xi);
     const auto dst = (m == 2) ? Arg::Dn(xn) : Arg::An(xn);
-    // GNU AS does not accept size suffix for EXG, although it's size is always
-    // long word.
-    const auto opsize = OpSize::kNone;
+    const auto opsize = OpSize::kLong;
     node.op = Op::Typical(OpCode::kEXG, opsize, src, dst);
     return node.size = kInstructionSizeStepBytes + src.Size(opsize) + dst.Size(opsize);
 }
 
-static size_t disasm_chunk_c(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_chunk_c(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
     if ((instr & 0x1f0) == 0x100) {
         return disasm_addx_subx_abcd_sbcd(node, instr, OpCode::kABCD);
@@ -1432,28 +1516,34 @@ static size_t disasm_chunk_c(DisasmNode &node, const uint16_t instr, const DataV
     if (opsize == OpSize::kInvalid) {
         const bool is_signed = (instr >> 8) & 1;
         const auto opcode = is_signed ? OpCode::kMULS : OpCode::kMULU;
-        return disasm_divu_divs_mulu_muls(node, instr, code, opcode);
+        return disasm_divu_divs_mulu_muls(node, instr, code, s, opcode);
     }
     const unsigned m_split = instr & 0x1f8;
     if (m_split == 0x188 || m_split == 0x148 || m_split == 0x140) {
         return disasm_exg(node, instr);
     }
-    return disasm_or_and(node, instr, code, opsize, OpCode::kAND);
+    return disasm_or_and(node, instr, code, s, opsize, OpCode::kAND);
 }
 
 static size_t disasm_add_sub_x_a(
-        DisasmNode &node, const uint16_t instr, const DataView &code, const OpCode opcode)
+        DisasmNode &node,
+        const uint16_t instr,
+        const DataView &code,
+        const Settings &s,
+        const OpCode opcode)
 {
     const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
     if (opsize == OpSize::kInvalid) {
-        return disasm_adda_suba_cmpa(node, instr, code, (opcode == OpCode::kSUB) ? OpCode::kSUBA : OpCode::kADDA);
+        return disasm_adda_suba_cmpa(
+                node, instr, code, s, (opcode == OpCode::kSUB) ? OpCode::kSUBA : OpCode::kADDA);
     }
     const bool dir_to_addr = (instr >> 8) & 1;
     const unsigned m = (instr >> 3) & 7;
     if (dir_to_addr && (m == 0 || m == 1)) {
-        return disasm_addx_subx_abcd_sbcd(node, instr, (opcode == OpCode::kSUB) ? OpCode::kSUBX : OpCode::kADDX);
+        return disasm_addx_subx_abcd_sbcd(
+                node, instr, (opcode == OpCode::kSUB) ? OpCode::kSUBX : OpCode::kADDX);
     }
-    return disasm_add_sub_cmp(node, instr, code, opcode, opsize, dir_to_addr);
+    return disasm_add_sub_cmp(node, instr, code, s, opcode, opsize, dir_to_addr);
 }
 
 static OpCode ShiftKindToOpcode(const ShiftKind k, const ShiftDirection d)
@@ -1474,22 +1564,24 @@ static OpCode ShiftKindToOpcode(const ShiftKind k, const ShiftDirection d)
 
 static bool IsValidShiftKind(const ShiftKind k)
 {
-    return static_cast<int>(k) < 4;
+    return static_cast<unsigned>(k) < 4u;
 }
 
-static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const DataView &code)
+static size_t disasm_shift_rotate(
+        DisasmNode &node, const uint16_t instr, const DataView &code, const Settings &s)
 {
-    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3);
+    const OpSize opsize = static_cast<OpSize>((instr >> 6) & 3u);
     const unsigned xn = instr & 7;
-    const uint8_t rotation = (instr >> 9) & 7;
+    const uint8_t rotation = (instr >> 9) & 7u;
     const ShiftKind kind = (opsize == OpSize::kInvalid)
         ? static_cast<ShiftKind>(rotation)
-        : static_cast<ShiftKind>((instr >> 3) & 3);
+        : static_cast<ShiftKind>((instr >> 3) & 3u);
     if (!IsValidShiftKind(kind)) {
         return disasm_verbatim(node, instr);
     }
+    const auto dir = static_cast<ShiftDirection>((instr >> 8) & 1u);
     const auto dst = (opsize == OpSize::kInvalid)
-        ? FetchArg(node.address + kInstructionSizeStepBytes, code, instr, opsize)
+        ? FetchArg(node.address + kInstructionSizeStepBytes, code, s, instr, opsize)
         : Arg::Dn(xn);
     if (opsize == OpSize::kInvalid) {
         switch (dst.mode) {
@@ -1515,52 +1607,48 @@ static size_t disasm_shift_rotate(DisasmNode &node, const uint16_t instr, const 
         case AddrMode::kImmediate:
             return disasm_verbatim(node, instr);
         }
-    }
-    const unsigned imm = ((rotation - 1) & 7) + 1;
-    const unsigned src = (opsize == OpSize::kInvalid) ? 1 : rotation;
-    const auto dir = static_cast<ShiftDirection>((instr >> 8) & 1);
-    if (opsize == OpSize::kInvalid) {
-        node.op = Op::Typical(ShiftKindToOpcode(kind, dir), opsize, dst);
+        node.op = Op::Typical(ShiftKindToOpcode(kind, dir), OpSize::kWord, dst);
     } else {
-        const unsigned m = (instr >> 5) & 1;
-        const auto arg1 = m ? Arg::AddrModeXn(ArgType::kDn, src) : Arg::Immediate(imm);
+        const unsigned imm = ((rotation - 1) & 7u) + 1u;
+        const unsigned m = (instr >> 5) & 1u;
+        const auto arg1 = m ? Arg::AddrModeXn(ArgType::kDn, rotation) : Arg::Immediate(imm);
         node.op = Op::Typical(ShiftKindToOpcode(kind, dir), opsize, arg1, dst);
     }
     return node.size = kInstructionSizeStepBytes + dst.Size(opsize);
 }
 
-static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataView &c)
+static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataView &c, const Settings &s)
 {
     switch ((i & 0xf000) >> 12) {
     case 0x0:
-        return disasm_bitops_movep(n, i, c);
+        return disasm_bitops_movep(n, i, c, s);
     case 0x1:
     case 0x2:
     case 0x3:
-        return disasm_move_movea(n, i, c);
+        return disasm_move_movea(n, i, c, s);
     case 0x4:
-        return disasm_chunk_4(n, i, c);
+        return disasm_chunk_4(n, i, c, s);
     case 0x5:
-        return disasm_addq_subq_scc_dbcc(n, i, c);
+        return disasm_addq_subq_scc_dbcc(n, i, c, s);
     case 0x6:
-        return disasm_bra_bsr_bcc(n, i, c);
+        return disasm_bra_bsr_bcc(n, i, c, s);
     case 0x7:
         return disasm_moveq(n, i);
     case 0x8:
-        return disasm_divu_divs_sbcd_or(n, i, c);
+        return disasm_divu_divs_sbcd_or(n, i, c, s);
     case 0x9:
-        return disasm_add_sub_x_a(n, i, c, OpCode::kSUB);
+        return disasm_add_sub_x_a(n, i, c, s, OpCode::kSUB);
     case 0xa:
         // Does not exist
         return disasm_verbatim(n, i);
     case 0xb:
-        return disasm_eor_cmpm_cmp_cmpa(n, i, c);
+        return disasm_eor_cmpm_cmp_cmpa(n, i, c, s);
     case 0xc:
-        return disasm_chunk_c(n, i, c);
+        return disasm_chunk_c(n, i, c, s);
     case 0xd:
-        return disasm_add_sub_x_a(n, i, c, OpCode::kADD);
+        return disasm_add_sub_x_a(n, i, c, s, OpCode::kADD);
     case 0xe:
-        return disasm_shift_rotate(n, i, c);
+        return disasm_shift_rotate(n, i, c, s);
     case 0xf:
         // Does not exist
         return disasm_verbatim(n, i);
@@ -1569,7 +1657,7 @@ static size_t m68k_disasm(DisasmNode &n, uint16_t i, const DataView &c)
     return disasm_verbatim(n, i);
 }
 
-size_t DisasmNode::Disasm(const DataView &code)
+size_t DisasmNode::Disasm(const DataView &code, const Settings &s)
 {
     // We assume that machine have no MMU and ROM data always starts at 0
     assert(this->address < code.size);
@@ -1579,7 +1667,7 @@ size_t DisasmNode::Disasm(const DataView &code)
     ref2_addr = 0;
     const uint16_t instr = GetU16BE(code.buffer + this->address);
     if (IsInstruction(this->type)) {
-        return m68k_disasm(*this, instr, code);
+        return m68k_disasm(*this, instr, code, s);
     } else {
         // Data should not be disassembled
         return disasm_verbatim(*this, instr);
@@ -1742,8 +1830,19 @@ static const char *ToString(const OpCode opcode, const Condition condition)
     return "?";
 }
 
-static const char *ToString(const OpSize s)
+static const char *ToString(const OpSize s, bool with_dot)
 {
+    if (with_dot) {
+        switch (s) {
+        case OpSize::kNone: return "";
+        case OpSize::kByte: return ".b";
+        case OpSize::kShort: return ".s";
+        case OpSize::kWord: return ".w";
+        case OpSize::kLong: return ".l";
+        }
+        assert(false);
+        return "";
+    }
     switch (s) {
     case OpSize::kNone: return "";
     case OpSize::kByte: return "b";
@@ -1770,13 +1869,13 @@ static unsigned RegNum(const uint8_t xi)
     return xi & 0x7;
 }
 
-static size_t snprint_reg_mask(
+static size_t snprint_reg_mask_gnu(
         char *const buf, const size_t bufsz, const uint32_t regmask_arg, const ArgType arg_type)
 {
     const uint32_t regmask = regmask_arg & 0xffff;
     size_t written = 0;
-    bool first_printed = 0;
     size_t span = 0;
+    bool first_printed = false;
     // 17-th bit used to close the span with 0 value unconditionally
     for (int i = 0; i < 17; i++) {
         const uint32_t mask = (i <= 15)
@@ -1784,7 +1883,7 @@ static size_t snprint_reg_mask(
             : 0;
         const bool hit = regmask & mask;
         const bool span_open = hit && span == 0;
-        const bool span_closed = !hit && span > 1;
+        const bool span_closed = (!hit && span > 1);
         const int printable_i = i - (span_closed ? 1 : 0);
         const int id = printable_i % 8;
         const char regtype = (printable_i >= 8) ? 'a' : 'd';
@@ -1804,11 +1903,67 @@ static size_t snprint_reg_mask(
     return written;
 }
 
-int SNPrintArg(
+/*! _.
+ *
+ * This function splits spans of d0-d7 and a0-a7, unlike snprint_reg_mask_gnu,
+ * which may produce spans across d-regs and a-regs like d0-a7.
+ */
+static size_t snprint_reg_mask_sierra(
+        char *const buf, const size_t bufsz, const uint32_t regmask_arg, const ArgType arg_type)
+{
+    const uint32_t regmask = regmask_arg & 0xffff;
+    size_t written = 0;
+    size_t span = 0;
+    bool first_printed = false;
+    bool dn_passed = false;
+    // 17-th bit used to close the span with 0 value unconditionally
+    for (int i = 0; i < 17; i++) {
+        const uint32_t mask = (i <= 15)
+            ? (1 << ((arg_type == ArgType::kRegMaskPredecrement) ? (15 - i) : i))
+            : 0;
+        const bool hit = regmask & mask;
+        if (dn_passed && i == 8) {
+            span = 0;
+        }
+        const bool span_open = (hit && span == 0) && !(!dn_passed && i == 8);
+        const bool span_closed = !hit || (!dn_passed && i == 8);
+        const int printable_i = i - (span_closed ? 1 : 0);
+        const int id = printable_i % 8;
+        const char regtype = (printable_i >= 8) ? 'a' : 'd';
+        if (span_open || (span_closed && span > 1)) {
+            const char *const delimiter = span_open ? (first_printed ? "/" : "") : "-";
+            const size_t remaining = bufsz - written;
+            const int ret = snprintf(buf + written, remaining, "%s%c%d", delimiter, regtype, id);
+            assert(ret > 0);
+            assert(static_cast<unsigned>(ret) >= sizeof("d0")-1);
+            assert(static_cast<unsigned>(ret) <= sizeof("-d0")-1);
+            written += Min(remaining, ret);
+            first_printed = true;
+        }
+        span = hit ? span + 1 : 0;
+        if (!dn_passed && i == 8) {
+            // We need to repeat the iteration on a0 (i == 8) because we closed
+            // the span and it will get open again
+            i--;
+            dn_passed = true;
+        }
+    }
+    assert(written < bufsz); // Output must not be truncated
+    return written;
+}
+
+int SNPrintArgRaw(char *const buf, const size_t bufsz, const Arg &arg)
+{
+    return snprintf(buf, bufsz, "0x%04x", arg.uword);
+}
+
+static int SNPrintArg(
             char *const buf,
             const size_t bufsz,
             const Arg &arg,
+            const OpCode opcode,
             const bool imm_as_hex,
+            const TargetAssembler target_asm,
             const RefKindMask ref_kinds,
             const char *const label,
             const uint32_t self_addr,
@@ -1819,20 +1974,47 @@ int SNPrintArg(
         assert(false);
         break;
     case ArgType::kRaw:
-        return snprintf(buf, bufsz, "0x%04x", arg.uword);
+        return SNPrintArgRaw(buf, bufsz, arg);
     case ArgType::kDn:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz, "d%d", arg.xn);
+        }
         return snprintf(buf, bufsz, "%%d%d", arg.xn);
     case ArgType::kAn:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz, "a%u", arg.xn);
+        }
         return snprintf(buf, bufsz, "%%a%u", arg.xn);
     case ArgType::kAnAddr:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz, "(a%u)", arg.xn);
+        }
         return snprintf(buf, bufsz, "%%a%u@", arg.xn);
     case ArgType::kAnAddrIncr:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz, "(a%u)+", arg.xn);
+        }
         return snprintf(buf, bufsz, "%%a%u@+", arg.xn);
     case ArgType::kAnAddrDecr:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz, "-(a%u)", arg.xn);
+        }
         return snprintf(buf, bufsz, "%%a%u@-", arg.xn);
     case ArgType::kD16AnAddr:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz, "%d(a%u)", arg.d16_an.d16, arg.d16_an.an);
+        }
         return snprintf(buf, bufsz, "%%a%u@(%d:w)", arg.d16_an.an, arg.d16_an.d16);
     case ArgType::kD8AnXiAddr:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(
+                    buf, bufsz, "%d(a%u,%c%u.%c)",
+                    arg.d8_an_xi.d8,
+                    arg.d8_an_xi.an,
+                    RegChar(arg.d8_an_xi.xi),
+                    RegNum(arg.d8_an_xi.xi),
+                    SizeSpecChar(arg.d8_an_xi.xi));
+        }
         return snprintf(
                 buf, bufsz, "%%a%u@(%d,%%%c%u:%c)",
                 arg.d8_an_xi.an,
@@ -1846,13 +2028,22 @@ int SNPrintArg(
             const char c = arg.type == ArgType::kLong ? 'l' : 'w';
             if (ref_kinds & kRefAbsMask) {
                 if (static_cast<uint32_t>(arg.lword) == ref_addr) {
+                    if (TargetAssembler::kSierraAsm68 == target_asm) {
+                        return snprintf(buf, bufsz, "%s.%c", label, c);
+                    }
                     return snprintf(buf, bufsz, "%s:%c", label, c);
                 } else {
                     // It has to be AFTER the label we are gonna reference here
                     assert(static_cast<uint32_t>(arg.lword) > ref_addr);
+                    if (TargetAssembler::kSierraAsm68 == target_asm) {
+                        return snprintf(buf, bufsz, "%s+%d.%c", label, arg.lword - ref_addr, c);
+                    }
                     return snprintf(buf, bufsz, "%s+%d:%c", label, arg.lword - ref_addr, c);
                 }
             } else {
+                if (TargetAssembler::kSierraAsm68 == target_asm) {
+                    return snprintf(buf, bufsz, "0x%x.%c", arg.lword, c);
+                }
                 return snprintf(buf, bufsz, "0x%x:%c", arg.lword, c);
             }
         }
@@ -1867,15 +2058,51 @@ int SNPrintArg(
             const uint32_t arg_addr = self_addr + arg.d16_pc.d16 + kInstructionSizeStepBytes +
                 (has_fix ? kInstructionSizeStepBytes : 0);
             if (arg_addr == ref_addr) {
+                if (TargetAssembler::kSierraAsm68 == target_asm) {
+                    return snprintf(buf, bufsz, "%s(pc)", label);
+                }
                 return snprintf(buf, bufsz, "%%pc@(%s:w)", label);
             } else {
                 assert(arg_addr > ref_addr);
+                if (TargetAssembler::kSierraAsm68 == target_asm) {
+                    return snprintf(buf, bufsz,  "%s+%d(pc)", label, arg_addr - ref_addr);
+                }
                 return snprintf(buf, bufsz,  "%%pc@(%s+%d:w)", label, arg_addr - ref_addr);
             }
         } else {
+            if (TargetAssembler::kSierraAsm68 == target_asm) {
+                // XXX: It may depend on the current instruction size, so adding
+                // kInstructionSizeStepBytes may be invalid in some cases.
+                const int displacement = arg.d16_pc.d16 + BasePartSize(opcode);
+                if (displacement == 0) {
+                    return snprintf(buf, bufsz, ".(pc)");
+                }
+                return snprintf(buf, bufsz, ".%s%d(pc)",
+                        displacement >= 0 ? "+" : "",
+                        displacement);
+            }
             return snprintf(buf, bufsz, "%%pc@(%d:w)", arg.d16_pc.d16);
         }
     case ArgType::kD8PCXiAddr:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            // XXX: It may depend on the current instruction size, so adding
+            // kInstructionSizeStepBytes may be invalid in some cases.
+            const int displacement = arg.d8_pc_xi.d8 + BasePartSize(opcode);
+            if (displacement == 0) {
+                return snprintf(
+                        buf, bufsz, ".(pc,%c%u.%c)",
+                        RegChar(arg.d8_pc_xi.xi),
+                        RegNum(arg.d8_pc_xi.xi),
+                        SizeSpecChar(arg.d8_pc_xi.xi));
+            }
+            return snprintf(
+                    buf, bufsz, ".%s%d(pc,%c%u.%c)",
+                    displacement >= 0 ? "+" : "",
+                    displacement,
+                    RegChar(arg.d8_pc_xi.xi),
+                    RegNum(arg.d8_pc_xi.xi),
+                    SizeSpecChar(arg.d8_pc_xi.xi));
+        }
         return snprintf(
                 buf, bufsz, "%%pc@(%d,%%%c%u:%c)",
                 arg.d8_pc_xi.d8,
@@ -1898,7 +2125,11 @@ int SNPrintArg(
         }
     case ArgType::kRegMask:
     case ArgType::kRegMaskPredecrement:
-        return snprint_reg_mask(buf, bufsz, arg.uword, arg.type);
+        if (target_asm == TargetAssembler::kGnuAs) {
+            return snprint_reg_mask_gnu(buf, bufsz, arg.uword, arg.type);
+        } else {
+            return snprint_reg_mask_sierra(buf, bufsz, arg.uword, arg.type);
+        }
     case ArgType::kDisplacement:
         if (ref_kinds & kRefRelMask) {
             if (static_cast<uint32_t>(self_addr + arg.lword) == ref_addr) {
@@ -1908,13 +2139,25 @@ int SNPrintArg(
                 return snprintf(buf, bufsz,  "%s+%d", label, (self_addr + arg.lword) - ref_addr);
             }
         } else {
+            if (arg.lword == 0) {
+                return snprintf(buf, bufsz,  ".");
+            }
             return snprintf(buf, bufsz,  ".%s%d", arg.lword >= 0 ? "+" : "", arg.lword);
         }
     case ArgType::kCCR:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz,  "ccr");
+        }
         return snprintf(buf, bufsz,  "%%ccr");
     case ArgType::kSR:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz,  "sr");
+        }
         return snprintf(buf, bufsz,  "%%sr");
     case ArgType::kUSP:
+        if (TargetAssembler::kSierraAsm68 == target_asm) {
+            return snprintf(buf, bufsz,  "usp");
+        }
         return snprintf(buf, bufsz,  "%%usp");
     }
     assert(false);
@@ -1924,8 +2167,7 @@ int SNPrintArg(
 int FPrintOp(
         FILE *const stream,
         const Op &op,
-        const char *const indent,
-        const bool imm_as_hex,
+        const Settings &s,
         const RefKindMask ref_kinds,
         const char *const ref1_label,
         const char *const ref2_label,
@@ -1935,16 +2177,22 @@ int FPrintOp(
 {
     assert(op.opcode != OpCode::kNone);
     char mnemonic_str[kMnemonicBufferSize]{};
+    const bool gnu = s.target_asm == TargetAssembler::kGnuAs;
     // XXX GNU AS does not know ABCD.B, it only knows ABCD, but happily consumes
     // SBCD.B and others. That's why it is OpSize::kNone specifically for ABCD
     // mnemonic. It is probably a bug in GNU AS.
-    const OpSize size_spec{(op.opcode == OpCode::kABCD) ? OpSize::kNone : op.size_spec};
+    const bool abcd = op.opcode == OpCode::kABCD;
+    // XXX GNU AS does not accept size suffix for EXG, although it's size is
+    // always long word.
+    const bool exg = op.opcode == OpCode::kEXG;
+    const OpSize size_spec{(gnu && (abcd || exg)) ? OpSize::kNone : op.size_spec};
+    const bool with_dot = TargetAssembler::kSierraAsm68 == s.target_asm || s.dot_size_spec;
     snprintf(
             mnemonic_str,
             kMnemonicBufferSize,
             "%s%s",
             ToString(op.opcode, op.condition),
-            ToString(size_spec));
+            ToString(size_spec, with_dot));
     if (op.arg1.type != ArgType::kNone) {
         char arg1_str[kArgsBufferSize]{};
         const RefKindMask ref1_kinds = ref_kinds & (kRef1Mask | kRefPcRelFix2Bytes);
@@ -1952,7 +2200,10 @@ int FPrintOp(
         // argument is plain address register, status register or condition code
         // register. USP is not the case because it's value may be moved only to
         // or from An register.
-        const bool imm_as_hex_2 = imm_as_hex ||
+        const bool imm_as_hex = s.imm_hex ||
+            op.arg1.type == ArgType::kAn ||
+            op.arg1.type == ArgType::kCCR ||
+            op.arg1.type == ArgType::kSR ||
             op.arg2.type == ArgType::kAn ||
             op.arg2.type == ArgType::kCCR ||
             op.arg2.type == ArgType::kSR;
@@ -1960,7 +2211,9 @@ int FPrintOp(
                 arg1_str,
                 kArgsBufferSize,
                 op.arg1,
-                imm_as_hex_2,
+                op.opcode,
+                imm_as_hex,
+                s.target_asm,
                 ref1_kinds,
                 ref1_label,
                 self_addr,
@@ -1972,16 +2225,20 @@ int FPrintOp(
                     arg2_str,
                     kArgsBufferSize,
                     op.arg2,
-                    false,
+                    op.opcode,
+                    // Second arg may be immediate when dealing with "link", so
+                    // imm_as_hex is relevant here as well.
+                    imm_as_hex,
+                    s.target_asm,
                     ref2_kinds,
                     ref2_label,
                     self_addr,
                     ref2_addr);
-            return fprintf(stream, "%s%s %s,%s", indent, mnemonic_str, arg1_str, arg2_str);
+            return fprintf(stream, "%s%s %s,%s", s.indent, mnemonic_str, arg1_str, arg2_str);
         } else {
-            return fprintf(stream, "%s%s %s", indent, mnemonic_str, arg1_str);
+            return fprintf(stream, "%s%s %s", s.indent, mnemonic_str, arg1_str);
         }
     } else {
-        return fprintf(stream, "%s%s", indent, mnemonic_str);
+        return fprintf(stream, "%s%s", s.indent, mnemonic_str);
     }
 }

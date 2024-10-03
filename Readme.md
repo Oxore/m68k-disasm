@@ -1,15 +1,19 @@
 # Motorola 68000 Disassembler
 
-> Disassemble into what `as` can assemble back
+> Disassemble some M68000 machine code into what an assembler can assemble again
 
 This project aims to be a disassembler that is capable to produce assembly code
-that GNU AS will translate into the same original machine code. It's only use
-case for now is Sega Mega Drive / Genesis ROM hacking. I failed to find any way
-to disassemble SMD ROMs in such a way that it would be possible to assemble it
-back with GNU AS. All disassemblers I tried produce either syntactically
-incompatible assembly listing, or it is not the same as original binary after
-translation into machine code. So I decided to build my own disassembler, that
-will do exactly what I need with full control over the process and maybe more.
+that an assembler will translate into the same original machine code. It could
+be called a *matching disassembling*. GNU AS and Sierra ASM68 assemblers are
+currently supported.
+
+It's only use case for now is Sega Mega Drive / Genesis ROM hacking. I failed to
+find any way to disassemble SMD ROMs in such a way that it would be possible to
+assemble it back into binary. All disassemblers I tried produce either
+syntactically incompatible assembly listing, or it is not the same as original
+binary after translation into machine code. So I decided to build my own
+disassembler, that will do exactly what I need with full control over the
+process and maybe more.
 
 ![A typical use case flow](pipeline.svg)
 
@@ -112,9 +116,10 @@ To get detailed help you can run:
 
 Goals of this Motorola 68000 disassembler project in this particular repo:
 - Support all Motorola 68000 ISA instructions.
-- Flawless compatibility with GNU AS syntax. It should always emit the code on
-  which GNU AS produces absolutely identical binary (with or without linkage)
-  without errors or warnings, unless some peculiar flags has been specified.
+- Flawless compatibility with GNU AS and Sierra ASM68 syntax. It should always
+  emit the code on which GNU AS produces absolutely identical binary (with or
+  without linkage) without errors or warnings, unless some peculiar flags has
+  been specified.
 - Support PC trace tables. With trace tables it will disassemble traced PC
   locations only, without attempt to disassemble everything, because not
   everything is instruction, some code is just data.
@@ -148,6 +153,9 @@ What is **not** the goal (at least not in this repo):
 - It generates GNU AS compatible listing, that may be translated back to machine
   code using `m68k-none-elf-as` in the way that it matches original binary file,
   no matter what.
+- It generates Sierra ASM68 compatible listing, that may be translated back to
+  machine code using `ASM68` in DOS environment in the way that it matches
+  original binary file, no matter what.
 - It generates labels for all jump instructions (JSR, JMP, BRA, Bcc and DBcc) if
   jump location is inside the code being disassembled. This feature can be
   enabled with `-flabels`, `-frel-labels` and `-fabs-labels` options, all at
@@ -160,6 +168,10 @@ What is **not** the goal (at least not in this repo):
   `--pc-trace=file` to disassemble only what is supposed to be instructions and
   leave all the rest as raw data. Otherwise it will try to disassemble
   everything.
+- Automatic and non-committing code discovery with jump follow with `-fwalk` and
+  `-ffollow-jumps`. I.e. when PC trace table provided, the disassembler will try
+  it's best to disassemble non-traced continuous code spans, until unknown
+  instruction or unconditional branch encountered.
 
 ### Limitations
 

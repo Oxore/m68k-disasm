@@ -177,6 +177,7 @@ struct Arg {
         ArgType type{ArgType::kNone};
         AddrMode mode;
     };
+    bool is_invalid{};
     union {
         int32_t lword{}; ///< kLong, kWord, kDisplacement, kImmediate
         uint16_t uword; ///< kRegMask, kRaw
@@ -213,7 +214,7 @@ struct Arg {
         return 0;
     }
     static constexpr auto AddrModeXn(const ArgType type, const uint8_t xn) {
-        Arg a{{type}, {0}};
+        Arg a{{type}, false, {0}};
         a.xn = xn;
         return a;
     }
@@ -230,67 +231,83 @@ struct Arg {
     }
     static constexpr auto D16AnAddr(const uint8_t xn, const int16_t d16)
     {
-        Arg a{{ArgType::kD16AnAddr}, {0}};
+        Arg a{{ArgType::kD16AnAddr}, false, {0}};
+        a.d16_an = D16AnPCAddr{xn, d16};
+        return a;
+    }
+    static constexpr auto D16AnAddrInvalid(const uint8_t xn, const int16_t d16)
+    {
+        Arg a{{ArgType::kD16AnAddr}, true, {0}};
         a.d16_an = D16AnPCAddr{xn, d16};
         return a;
     }
     static constexpr auto D16PCAddr(const int16_t d16)
     {
-        Arg a{{ArgType::kD16PCAddr}, {0}};
+        Arg a{{ArgType::kD16PCAddr}, false, {0}};
         a.d16_pc = D16AnPCAddr{0, d16};
         return a;
     }
     static constexpr auto Word(const int16_t w)
     {
-        Arg a{{ArgType::kWord}, {0}};
+        Arg a{{ArgType::kWord}, false, {0}};
         a.lword = w;
         return a;
     }
     static constexpr auto Long(const int32_t l)
     {
-        Arg a{{ArgType::kLong}, {0}};
+        Arg a{{ArgType::kLong}, false, {0}};
         a.lword = l;
         return a;
     }
     static constexpr auto D8AnXiAddr(
             const uint8_t xn, const uint8_t xi, const OpSize s, const int8_t d8)
     {
-        Arg a{{ArgType::kD8AnXiAddr}, {0}};
+        Arg a{{ArgType::kD8AnXiAddr}, false, {0}};
         a.d8_an_xi = D8AnPCXiAddr{xn, uint8_t(xi | (s == OpSize::kLong ? 0x10u : 0u)), d8};
         return a;
     }
     static constexpr auto D8PCXiAddr(
             const uint8_t xn, const uint8_t xi, const OpSize s, const int8_t d8)
     {
-        Arg a{{ArgType::kD8PCXiAddr}, {0}};
+        Arg a{{ArgType::kD8PCXiAddr}, false, {0}};
         a.d8_pc_xi = D8AnPCXiAddr{xn, uint8_t(xi | (s == OpSize::kLong ? 0x10u : 0u)), d8};
         return a;
     }
     static constexpr auto Immediate(const int32_t value) {
-        Arg a{{ArgType::kImmediate}, {0}};
+        Arg a{{ArgType::kImmediate}, false, {0}};
+        a.lword = value;
+        return a;
+    }
+    static constexpr auto ImmediateInvalid(const int32_t value) {
+        Arg a{{ArgType::kImmediate}, true, {0}};
         a.lword = value;
         return a;
     }
     static constexpr auto RegMask(const uint16_t regmask) {
-        Arg a{{ArgType::kRegMask}, {0}};
+        Arg a{{ArgType::kRegMask}, false, {0}};
         a.uword = regmask;
         return a;
     }
     static constexpr auto RegMaskPredecrement(const uint16_t regmask) {
-        Arg a{{ArgType::kRegMaskPredecrement}, {0}};
+        Arg a{{ArgType::kRegMaskPredecrement}, false, {0}};
         a.uword = regmask;
         return a;
     }
     static constexpr auto Displacement(const int32_t displacement) {
-        Arg a{{ArgType::kDisplacement}, {0}};
+        Arg a{{ArgType::kDisplacement}, false, {0}};
         a.lword = displacement;
         return a;
     }
-    static constexpr auto CCR() { return Arg{{ArgType::kCCR}, {0}}; }
-    static constexpr auto SR() { return Arg{{ArgType::kSR}, {0}}; }
-    static constexpr auto USP() { return Arg{{ArgType::kUSP}, {0}}; }
+    static constexpr auto DisplacementInvalid(const int32_t displacement) {
+        Arg a{{ArgType::kDisplacement}, true, {0}};
+        a.lword = displacement;
+        return a;
+    }
+    static constexpr auto CCR() { return Arg{{ArgType::kCCR}, false, {0}}; }
+    static constexpr auto SR() { return Arg{{ArgType::kSR}, false, {0}}; }
+    static constexpr auto USP() { return Arg{{ArgType::kUSP}, false, {0}}; }
     static constexpr auto Raw(const uint16_t instr) {
-        Arg a{{ArgType::kRaw}, {0}};
+        Arg a{{ArgType::kRaw}, false, {0}};
         a.uword = instr;
         return a;
     }
@@ -325,22 +342,13 @@ static constexpr inline bool IsBRA(Op op)
     return op.opcode == OpCode::kBcc && op.condition == Condition::kT;
 }
 
-int SNPrintArg(
-        char *buf,
-        size_t bufsz,
-        const Arg &,
-        bool imm_as_hex = false,
-        RefKindMask ref_kinds = 0,
-        const char *label = nullptr,
-        uint32_t self_addr = 0,
-        uint32_t ref_addr = 0);
+int SNPrintArgRaw(char *buf, size_t bufsz, const Arg &);
 
 /// Return value means nothing and should be ignored
 int FPrintOp(
         FILE *,
         const Op &op,
-        const char *const indent,
-        const bool imm_as_hex,
+        const Settings &settings,
         RefKindMask ref_kinds = 0,
         const char *ref1_label = nullptr,
         const char *ref2_label = nullptr,
@@ -348,7 +356,7 @@ int FPrintOp(
         uint32_t ref1_addr = 0,
         uint32_t ref2_addr = 0);
 
-constexpr size_t BaseInstructionSize(OpCode opcode)
+constexpr size_t BasePartSize(OpCode opcode)
 {
     switch (opcode) {
     case OpCode::kMOVEM:

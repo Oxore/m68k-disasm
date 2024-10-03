@@ -17,6 +17,11 @@ enum class SplitPointType {
     kFunction,
 };
 
+enum class TargetAssembler {
+    kGnuAs = 0,
+    kSierraAsm68,
+};
+
 struct SplitParams {
     SplitPointType type{};
     size_t alignment{};
@@ -39,10 +44,12 @@ struct Settings {
     bool follow_jumps{};
     bool walk{};
     bool symbols{};
+    bool dot_size_spec{};
     BFDTarget bfd{};
     const char *indent{"\t"};
     const char *output_dir_path{};
     SplitParams split{};
+    TargetAssembler target_asm{};
 };
 
 using RefKindMask = unsigned;

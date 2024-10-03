@@ -4,7 +4,6 @@
 #include "elf_image.h"
 #include "data_buffer.h"
 #include "disasm.h"
-#include "gnu.h"
 #include "common.h"
 
 #define OPTPARSE_IMPLEMENTATION
@@ -70,6 +69,9 @@ static constexpr bool ShouldPrintAsRaw(const Op& op)
         {
             return true;
         }
+    }
+    if (op.arg1.is_invalid || op.arg2.is_invalid) {
+        return true;
     }
     return false;
 }
@@ -258,6 +260,64 @@ static FILE *OpenNewPartFile(const char *dir, uint32_t address)
     return output;
 }
 
+static constexpr const char *SymbolTypeToElfTypeString(SymbolType t)
+{
+    switch (t) {
+    case SymbolType::kNone: return nullptr;
+    case SymbolType::kFunction: return "function";
+    case SymbolType::kObject: return "object";
+    }
+    return nullptr;
+}
+
+static constexpr unsigned SymbolTypeToSierraTypeNumber(SymbolType t)
+{
+    switch (t) {
+    case SymbolType::kNone: return 0;
+    case SymbolType::kFunction: return 0x20;
+    case SymbolType::kObject: return 0x30;
+    }
+    return 0;
+}
+
+static void EmitSymbolMetadata(FILE *out, const Symbol &symbol, const Settings &s)
+{
+    switch (s.target_asm) {
+    case TargetAssembler::kGnuAs:
+        {
+            const char *const type = SymbolTypeToElfTypeString(symbol.type);
+            if (type) {
+                fprintf(out, "%s.type\t%s, @%s\n", s.indent, symbol.name, type);
+            }
+        }
+        return;
+    case TargetAssembler::kSierraAsm68:
+        {
+            // TODO figure out what is 17-th bit
+            const unsigned type = 0x10000 | SymbolTypeToSierraTypeNumber(symbol.type);
+            // TODO figure out how to determine storage class
+            const int storage_class = 2;
+            fprintf(out, "%s.def\t%s\\\t.val\t%s\\\t.scl\t%d\\\t.type\t0x%x\\\t.endef\n",
+                    s.indent, symbol.name, symbol.name, storage_class, type);
+        }
+        return;
+    }
+    assert(0);
+}
+
+static void EmitSymbolSize(FILE *out, const char *sym_name, const Settings &s)
+{
+    switch (s.target_asm) {
+    case TargetAssembler::kGnuAs:
+        fprintf(out, "%s.size\t%s,.-%s\n", s.indent, sym_name, sym_name);
+        return;
+    case TargetAssembler::kSierraAsm68:
+        fprintf(out, "%s.def\t%s\\\t.val\t.\\\t.scl\t-1\\\t.endef\n", s.indent, sym_name);
+        return;
+    }
+    assert(0);
+}
+
 struct EmitContext {
     FILE *output{};
     // symbol_index starts with 1 because 0 is a special null symbol
@@ -308,7 +368,8 @@ static bool EmitNodeDisassembly(
             if (export_this_label) {
                 fprintf(output, "\n%s.globl\t%s\n", s.indent, name);
                 if (export_this_function) {
-                    fprintf(output, "%s.type\t%s, @function\n", s.indent, name);
+                    const auto symbol = Symbol{0, SymbolType::kFunction, name, 0};
+                    EmitSymbolMetadata(output, symbol, s);
                 }
             }
         }
@@ -321,12 +382,20 @@ static bool EmitNodeDisassembly(
         }
     } while (0);
     if (s.xrefs_from && (have_symbol || !is_local)) {
-        fprintf(output, "| XREFS:\n");
+        if (s.target_asm == TargetAssembler::kGnuAs) {
+            fprintf(output, "| XREFS:\n");
+        } else {
+            fprintf(output, "; XREFS:\n");
+        }
         for (const ReferenceNode *ref{node.ref_by}; ref; ref = ref->next) {
             if (ref->refs_count == 0) {
                 continue;
             }
-            fprintf(output, "|");
+            if (s.target_asm == TargetAssembler::kGnuAs) {
+                fprintf(output, "|");
+            } else {
+                fprintf(output, ";");
+            }
             for (size_t i = 0; i < ref->refs_count; i++) {
                 const ReferenceRecord r = ref->refs[i];
                 fprintf(output, " %s @%08x", ReferenceTypeToString(r.type), r.address);
@@ -336,16 +405,12 @@ static bool EmitNodeDisassembly(
     }
     assert(node.op.opcode != OpCode::kNone);
     if (ShouldPrintAsRaw(node.op)) {
-        FPrintOp(
-                output,
-                Op::Raw(GetU16BE(code.buffer + node.address)),
-                s.indent,
-                s.imm_hex);
+        FPrintOp(output, Op::Raw(GetU16BE(code.buffer + node.address)), s);
         uint32_t i = kInstructionSizeStepBytes;
         for (; i < node.size; i += kInstructionSizeStepBytes) {
             char arg_str[kArgsBufferSize]{};
             const auto arg = Arg::Raw(GetU16BE(code.buffer + node.address + i));
-            SNPrintArg(arg_str, kArgsBufferSize, arg);
+            SNPrintArgRaw(arg_str, kArgsBufferSize, arg);
             fprintf(output, ", %s", arg_str);
         }
     } else {
@@ -403,8 +468,7 @@ static bool EmitNodeDisassembly(
             FPrintOp(
                     output,
                     node.op,
-                    s.indent,
-                    s.imm_hex,
+                    s,
                     ref_kinds,
                     ref1_label,
                     ref2_label,
@@ -413,13 +477,21 @@ static bool EmitNodeDisassembly(
                     ref2_addr);
             const bool ref1_from_imm_ok = ((node.ref_kinds & kRef1ImmMask) ? s.imm_labels : true);
             if (s.xrefs_to && ref1 && !ref1_is_local && ref1_from_imm_ok) {
-                fprintf(output, " | XREF1 @%08x", ref1_addr);
+                if (s.target_asm == TargetAssembler::kGnuAs) {
+                    fprintf(output, " | XREF1 @%08x", ref1_addr);
+                } else {
+                    fprintf(output, " ; XREF1 @%08x", ref1_addr);
+                }
             }
             if (s.xrefs_to && ref2 && !ref2_is_local) {
-                fprintf(output, " | XREF2 @%08x", ref2_addr);
+                if (s.target_asm == TargetAssembler::kGnuAs) {
+                    fprintf(output, " | XREF2 @%08x", ref2_addr);
+                } else {
+                    fprintf(output, " ; XREF2 @%08x", ref2_addr);
+                }
             }
         } else {
-            FPrintOp(output, node.op, s.indent, s.imm_hex);
+            FPrintOp(output, node.op, s);
         }
     }
     if (s.raw_data_comment && (traced || s.raw_data_comment_all)) {
@@ -429,7 +501,11 @@ static bool EmitNodeDisassembly(
                 (sizeof raw_data_comment) - 1,
                 node.address,
                 node.size, code);
-        fprintf(output, " |%s", raw_data_comment);
+        if (s.target_asm == TargetAssembler::kGnuAs) {
+            fprintf(output, " |%s", raw_data_comment);
+        } else {
+            fprintf(output, " ;%s", raw_data_comment);
+        }
     }
     fprintf(output, "\n");
     return true;
@@ -445,9 +521,9 @@ static void EmitNonCodeSymbols(
             continue;
         }
         fprintf(output, "\n%s.globl\t%s\n", s.indent, symbol.name);
-        Gnu::EmitSymbolMetadata(output, s.indent, symbol);
+        EmitSymbolMetadata(output, symbol, s);
         fprintf(output, "%s = 0x%08x\n", symbol.name, symbol.address);
-        Gnu::EmitSymbolSize(output, s.indent, symbol.name);
+        EmitSymbolSize(output, symbol.name, s);
     }
 }
 
@@ -542,7 +618,7 @@ static bool EmitDisassembly(
         const size_t symtab_size = disasm_map.SymbolsCount();
         if (disasm_map.Symtab() != nullptr && symtab_size > 0) {
             for (const char *name = ctx.pending_size.TakeNext(address); name;) {
-                Gnu::EmitSymbolSize(ctx.output, s.indent, name);
+                EmitSymbolSize(ctx.output, name, s);
                 name = ctx.pending_size.TakeNext(address);
             }
             for (; ctx.symbol_index < symtab_size; ctx.symbol_index++) {
@@ -572,7 +648,7 @@ static bool EmitDisassembly(
                     if (symbol.type == SymbolType::kFunction) {
                         ctx.last_rendered_function_symbol_addr = address;
                     }
-                    Gnu::EmitSymbolMetadata(out, s.indent, symbol);
+                    EmitSymbolMetadata(out, symbol, s);
                     if (symbol.size > 0) {
                         ctx.pending_size.Add(address + symbol.size, symbol.name);
                     }
@@ -739,6 +815,7 @@ static bool ApplyFeature(Settings& s, const char *feature_arg)
         { &Settings::follow_jumps, "follow-jumps" },
         { &Settings::walk, "walk" },
         { &Settings::symbols, "symbols" },
+        { &Settings::dot_size_spec, "dot-size-spec" },
     };
     constexpr size_t sizeof_no_prefix = (sizeof "no-") - 1;
     const bool disable = FeatureStringHasPrefixNo(feature_arg);
@@ -776,6 +853,7 @@ static void PrintUsage(FILE *s, const char *argv0)
     "  -b, --bfd-target=BFD  Specify target object format. Will attempt to detect\n"
     "                        automatically if not set. Only `auto`, `binary` and\n"
     "                        `elf` are currently supported.\n"
+    "  --sierra-asm68        Produce assembly listing for Sierra ASM68.EXE.\n"
     "  <input_file_name>     Binary or elf file with the machine code to disassemble\n"
     "                        ('-' means stdin).\n"
     "Feature flags:\n"
@@ -807,6 +885,8 @@ static void PrintUsage(FILE *s, const char *argv0)
     "                        traced locations without overcommitting.\n"
     "  symbols               Extract and apply symbols from input file if available.\n"
     "                        ELF symbols only are currently supported.\n"
+    "  dot-size-spec         Use dot to separate mnemonic and size specifier.\n"
+    "                        E.g.: \"cmpm.l\" instead of \"cmpml\".\n"
     , argv0);
 }
 
@@ -850,6 +930,7 @@ int main(int, char* argv[])
         {"feature", 'f', OPTPARSE_REQUIRED},
         {"bfd-target", 'b', OPTPARSE_REQUIRED},
         {"indent", 80, OPTPARSE_REQUIRED},
+        {"sierra-asm68", 82, OPTPARSE_NONE},
         {},
     };
     const char *trace_file_name = nullptr;
@@ -895,6 +976,9 @@ int main(int, char* argv[])
                 return EXIT_FAILURE;
             }
             break;
+        case 82:
+            s.target_asm = TargetAssembler::kSierraAsm68;
+            break;
         case 'f':
             if (!ApplyFeature(s, options.optarg)) {
                 fprintf(stderr, "main: Error: Unknown feature \"%s\", exiting\n", options.optarg);
@@ -928,6 +1012,10 @@ int main(int, char* argv[])
             fprintf(stderr, "main: optparse_long: Error: \"%s\"\n", options.errmsg);
             return EXIT_FAILURE;
         }
+    }
+    if (s.target_asm != TargetAssembler::kGnuAs) {
+        // This is a GNU specific feature
+        s.short_ref_local_labels = false;
     }
     // Parse input file name
     char *arg;
