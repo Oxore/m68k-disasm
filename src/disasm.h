@@ -56,7 +56,7 @@ struct DisasmNode {
     /*! Disassembles instruction with arguments
      * returns size of whole instruction with arguments in bytes
      */
-    size_t Disasm(const DataView &code);
+    size_t Disasm(const DataView &code, const Settings &);
     size_t DisasmAsRaw(const DataView &code);
     void AddReferencedBy(uint32_t address, ReferenceType);
     ~DisasmNode();

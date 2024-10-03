@@ -349,10 +349,27 @@ run_test_simple "andib negative to Dn" "\x00\x07\xff\x80"
 run_test_simple "andiw negative to Dn" "\x00\x45\xff\x80"
 run_test_simple "andil negative to Dn" "\x00\x83\xff\x80\x00\x00"
 run_test_simple "addiw zero to (An)+" "\x06\x5a\x00\x00"
-run_test_simple "subiw zero from -(An)" "\x06\x62\x00\x00"
+run_test_simple "addiw zero from -(An)" "\x06\x62\x00\x00"
+run_test_simple "subiw zero from -(An)" "\x04\x62\x00\x00"
+# ANDI does not support An (direct address reg) addressing mode.
+run_test_expect_short "andi.w #0x3,a2" "\x06\x4a\x00\x03"
+# SUBI does not support An (direct address reg) addressing mode.
+run_test_expect_short "subi.w #0x3,a2" "\x04\x4a\x00\x03"
+run_test_simple "subi.w #0x3,%a2@-" "\x04\x62\x00\x03"
+run_test_simple "subi.w #0x4,%a2@+" "\x04\x5a\x00\x04"
+run_test_simple "subi.w #0x5,%a2@" "\x04\x52\x00\x05"
+run_test_simple "subi.w #0x6,%d2" "\x04\x42\x00\x06"
+run_test_simple "andi.w #0x3,%a2@-" "\x04\x62\x00\x03"
+run_test_simple "andi.w #0x4,%a2@+" "\x04\x5a\x00\x04"
+run_test_simple "andi.w #0x5,%a2@" "\x04\x52\x00\x05"
+run_test_simple "subi.w #0x6,%d2" "\x04\x42\x00\x06"
 run_test_simple "cmpib zero to (An)" "\x0c\x12\x00\x20"
 run_test_simple "cmpiw zero to (An)" "\x0c\x52\x00\x30"
 run_test_simple "cmpil zero to (An)" "\x0c\x92\x00\x00\x00\x40"
+# PC-relative argument is allowed only for m68020 and higher
+run_test_expect_short "cmpib #0x0,%pc@(-2:w)" "\x0c\x3a\x00\x00\xff\xfe"
+run_test_expect_short "cmpib #0x0,%pc@(-2,%d4:w)" "\x0c\x3a\x00\x00\x40\xfe"
+
 # From random tests
 run_test_expect_short "cmpil with invalid opsize" "\x0c\xe4\x26\xa3"
 
@@ -362,6 +379,9 @@ run_test_simple "tas Dn" "\x4a\xc2"
 run_test_simple "tstb Dn" "\x4a\x02"
 run_test_simple "tstw Dn" "\x4a\x42"
 run_test_simple "tstl Dn" "\x4a\x82"
+# PC-relative argument is allowed only for m68020 and higher
+run_test_expect_short "tstl %pc@(-2:w)" "\x4a\xba\xff\xfe"
+run_test_expect_short "tstl %pc@(-2,%d4:w)" "\x4a\xba\x40\xfe"
 run_test_expect_short "tas (d16,PC)" "\x4a\xfa\xff\xff"
 run_test_expect_short "tas (d8,PC,Xi)" "\x4a\xfb\x00\x00"
 
@@ -460,6 +480,9 @@ run_test_simple "movel (d8,PC,Xi) to Dn" "\x24\x3b\xa8\x90"
 run_test_simple "movel #imm to Dn" "\x24\x3c\xa8\x90\x00\x00"
 run_test_simple "moveal Dn" "\x20\x41"
 run_test_simple "moveal #imm" "\x20\x7c\xa8\x90\x00\x00"
+# Zero displacement "(d16,An)" works for GNU, but won't work for Sierra
+run_test_simple "movel %a2@(0),%a5(14024:w)" "\x2b\x6a\x00\x00\x36\xc8"
+run_test_simple "movel %a2(14024:w),%a5@(0)" "\x2b\x6a\x36\xc8\x00\x00"
 
 # From random tests
 #
