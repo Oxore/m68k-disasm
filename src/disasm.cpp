@@ -195,9 +195,6 @@ void DisasmMap::Disasm(
             }
         }
         inside_code_span = s.walk && IsNextLikelyAnInstruction(node->op);
-        if (nested && !inside_code_span) {
-            return;
-        }
         at += node->size;
         // NOTE: There is not much information about a reference passed further,
         // so just don't add a reference of immediate if s.imm_labels is false
@@ -235,6 +232,9 @@ void DisasmMap::Disasm(
                     ref_node.DisasmAsRaw(code);
                 }
             }
+        }
+        if (nested && !inside_code_span) {
+            return;
         }
     }
 }
