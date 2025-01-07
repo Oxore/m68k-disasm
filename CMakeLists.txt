@@ -41,9 +41,20 @@ set(common_compile_options
     -Wshadow
     )
 
+add_library(data_buffer OBJECT src/data_buffer.cpp)
+target_compile_options(data_buffer PRIVATE ${common_compile_options})
+target_compile_definitions(data_buffer PRIVATE $<$<CONFIG:Debug>:_FORTIFY_SOURCE=2>)
+target_link_options(data_buffer PRIVATE $<$<CONFIG:Debug>:${common_debug_flags}>)
+target_include_directories(data_buffer PRIVATE . lib)
+
+add_library(coff_image OBJECT src/coff_image.cpp)
+target_compile_options(coff_image PRIVATE ${common_compile_options})
+target_compile_definitions(coff_image PRIVATE $<$<CONFIG:Debug>:_FORTIFY_SOURCE=2>)
+target_link_options(coff_image PRIVATE $<$<CONFIG:Debug>:${common_debug_flags}>)
+target_include_directories(coff_image PRIVATE . lib)
+
 add_executable(m68k-disasm
     src/main.cpp
-    src/data_buffer.cpp
     src/disasm.cpp
     src/m68k.cpp
     src/elf_image.cpp
@@ -51,24 +62,23 @@ add_executable(m68k-disasm
 target_compile_options(m68k-disasm PRIVATE ${common_compile_options})
 target_compile_definitions(m68k-disasm PRIVATE $<$<CONFIG:Debug>:_FORTIFY_SOURCE=2>)
 target_link_options(m68k-disasm PRIVATE $<$<CONFIG:Debug>:${common_debug_flags}>)
+target_link_libraries(m68k-disasm PRIVATE data_buffer)
 target_include_directories(m68k-disasm PRIVATE . lib)
 
 add_executable(readcoff
     src/readcoff.cpp
-    src/coff_image.cpp
-    src/data_buffer.cpp
     )
 target_compile_options(readcoff PRIVATE ${common_compile_options})
 target_compile_definitions(readcoff PRIVATE $<$<CONFIG:Debug>:_FORTIFY_SOURCE=2>)
 target_link_options(readcoff PRIVATE $<$<CONFIG:Debug>:${common_debug_flags}>)
+target_link_libraries(readcoff PRIVATE data_buffer coff_image)
 target_include_directories(readcoff PRIVATE . lib)
 
 add_executable(coff2bin
     src/coff2bin.cpp
-    src/coff_image.cpp
-    src/data_buffer.cpp
     )
 target_compile_options(coff2bin PRIVATE ${common_compile_options})
 target_compile_definitions(coff2bin PRIVATE $<$<CONFIG:Debug>:_FORTIFY_SOURCE=2>)
 target_link_options(coff2bin PRIVATE $<$<CONFIG:Debug>:${common_debug_flags}>)
+target_link_libraries(coff2bin PRIVATE data_buffer coff_image)
 target_include_directories(coff2bin PRIVATE . lib)
